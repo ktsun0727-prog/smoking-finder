@@ -39,6 +39,7 @@ import java.util.Locale;
  *  - 사진 선택: 사진 올리기 버튼에서 갤러리/카메라 앱을 연다.
  *  - 외부 링크: 카카오맵·네이버지도·구글 지도·거리뷰는 해당 앱이나 브라우저로 연다.
  *  - 서버 주소: 접속이 안 되면 앱 안에서 바꿀 수 있다.
+ *  - 구글·네이버 로그인: 앱 안 화면에서는 막히므로 휴대폰 브라우저로 열고, 끝나면 smokingfinder://login 으로 돌아온다.
  */
 public class MainActivity extends Activity {
     private static final int REQ_LOCATION = 1;
@@ -79,8 +80,31 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new Client());
         web.setWebChromeClient(new Chrome());
 
+        if (handleLoginReturn(getIntent())) return;
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else web.loadUrl(serverUrl + "/");
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleLoginReturn(intent);
+    }
+
+    /** 브라우저 로그인 후 돌아온 smokingfinder://login?token=... 이면 그 토큰으로 앱 화면에 로그인한다. */
+    private boolean handleLoginReturn(Intent intent) {
+        Uri data = intent == null ? null : intent.getData();
+        if (data == null || !"smokingfinder".equals(data.getScheme()) || !"login".equals(data.getHost())) return false;
+        String token = data.getQueryParameter("token");
+        if (token == null || token.isEmpty()) return false;
+        web.loadUrl(serverUrl + "/auth/app-session?token=" + Uri.encode(token));
+        return true;
+    }
+
+    private static boolean isSocialLogin(Uri u) {
+        String p = u.getPath() == null ? "" : u.getPath();
+        return p.matches("^/auth/(google|naver)/login/?$");
     }
 
     // ---------- 화면 ↔ 앱 연결 ----------
@@ -186,6 +210,10 @@ public class MainActivity extends Activity {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
             String url = req.getUrl().toString();
+            if (isOurPage(url) && isSocialLogin(req.getUrl())) {     // 구글·네이버 로그인은 휴대폰 브라우저로
+                openExternal(url + (url.contains("?") ? "&" : "?") + "app=1");
+                return true;
+            }
             if (isOurPage(url)) return false;            // 우리 서버 화면은 앱 안에서
             openExternal(url);                            // 지도 앱, 거리뷰, 로그인 외부 페이지 등
             return true;

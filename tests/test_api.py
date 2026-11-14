@@ -19,6 +19,7 @@ import urllib.request
 TMP = tempfile.mkdtemp(prefix="smoking-test-")
 os.environ["SMOKING_DATA_DIR"] = TMP
 os.environ["SMOKING_CONFIG"] = os.path.join(TMP, "no-config.json")
+os.environ["SMOKING_ENV_FILE"] = os.path.join(TMP, "no.env")      # 실제 .env 를 읽지 않게
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 with open(os.path.join(TMP, "smoking_areas.csv"), "w", encoding="utf-8") as f:
@@ -59,7 +60,7 @@ def place(c, name):
 class ApiTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.srv, _ = server.create_server(port=0, dev_login=True, backups=False)
+        cls.srv, cls.auth = server.create_server(port=0, dev_login=True, backups=False)
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
         cls.base = f"http://127.0.0.1:{cls.srv.server_address[1]}"
         cls.anon = Client(cls.base)
@@ -237,6 +238,36 @@ class ApiTest(unittest.TestCase):
             __import__("time").sleep(0.05)
         self.assertEqual(got[0]["text"], "📍 새 흡연장 제보가 들어왔습니다.")
         hook.server_close()
+
+    def test_16_head_requests(self):
+        for path in ("/", "/healthz"):
+            req = urllib.request.Request(self.base + path, method="HEAD")
+            with urllib.request.urlopen(req) as r:
+                self.assertEqual(r.status, 200, path)
+                self.assertEqual(r.read(), b"", path)          # HEAD 는 본문이 없어야 함
+
+    def test_17_app_login_handoff(self):
+        uid = self.auth.upsert_user("dev", "appuser", "[개발] appuser", "")
+        token = self.auth.issue_app_token(uid)
+        c = Client(self.base)
+        c.call("/auth/app-session?token=" + urllib.parse.quote(token))
+        self.assertEqual(c.call("/api/me")[1]["user"]["id"], uid)          # 토큰으로 로그인됨
+        c2 = Client(self.base)
+        c2.call("/auth/app-session?token=" + urllib.parse.quote(token))
+        self.assertIsNone(c2.call("/api/me")[1]["user"])                    # 같은 토큰은 두 번 못 씀
+        self.assertIsNone(self.auth.consume_app_token("wrong"))
+
+    def test_18_app_login_state(self):
+        self.auth.config["google"] = {"client_id": "1-a.apps.googleusercontent.com", "client_secret": "GOCSPX-test"}
+        try:
+            url = self.auth.login_url("google", "http://x/cb", app=True)
+            state = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["state"][0]
+            self.assertEqual(self.auth.states[state][2], True)              # 앱에서 시작한 로그인으로 기록됨
+            url2 = self.auth.login_url("google", "http://x/cb")
+            state2 = urllib.parse.parse_qs(urllib.parse.urlparse(url2).query)["state"][0]
+            self.assertEqual(self.auth.states[state2][2], False)
+        finally:
+            self.auth.config.pop("google", None)
 
     def test_99_account_delete(self):
         c = Client(self.base).dev_login("leaver")

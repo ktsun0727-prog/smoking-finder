@@ -203,13 +203,27 @@ class Auth:
         
 
     # ---------- OAuth ----------
-    def login_url(self, p, redirect_uri):
+    # ---------- 안드로이드 앱 로그인 연결 ----------
+    # 구글·네이버는 앱 안 화면(WebView)에서의 로그인을 막는다. 그래서 휴대폰 브라우저로 로그인한 뒤,
+    # 1회용 토큰을 앱에 넘기고 앱이 그 토큰으로 자기 화면에 로그인 쿠키를 받는다.
+    def issue_app_token(self, uid):
+        now = time.time()
+        self.app_tokens = {k: v for k, v in getattr(self, "app_tokens", {}).items() if v[1] > now}
+        token = secrets.token_urlsafe(32)
+        self.app_tokens[token] = (uid, now + 120)          # 2분 안에 한 번만 쓸 수 있음
+        return token
+
+    def consume_app_token(self, token):
+        uid, exp = getattr(self, "app_tokens", {}).pop(token or "", (None, 0))
+        return uid if uid and exp > time.time() else None
+
+    def login_url(self, p, redirect_uri, app=False):
         if not self.enabled(p):
             raise ValueError("설정되지 않은 로그인 방식입니다.")
         state = secrets.token_urlsafe(24)
         now = time.time()
         self.states = {k: v for k, v in self.states.items() if v[1] > now}
-        self.states[state] = (p, now + 600)
+        self.states[state] = (p, now + 600, app)   # app: 안드로이드 앱에서 시작한 로그인
         q = {"response_type": "code", "client_id": self.config[p]["client_id"], "redirect_uri": redirect_uri, "state": state}
         if PROVIDERS[p]["scope"]:
             q["scope"] = PROVIDERS[p]["scope"]
@@ -236,7 +250,7 @@ class Auth:
             pid, name, email = r.get("id"), r.get("nickname") or r.get("name"), r.get("email")
         if not pid:
             raise ValueError("사용자 정보를 받지 못했습니다.")
-        return self.upsert_user(p, str(pid), name, email)
+        return self.upsert_user(p, str(pid), name, email), bool(saved[2] if len(saved) > 2 else False)
 
 
 def _post_form(url, form):

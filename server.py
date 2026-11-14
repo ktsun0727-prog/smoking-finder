@@ -178,7 +178,8 @@ def make_handler(auth, rules, opts, notifier):
             if cookie:
                 self.send_header("Set-Cookie", cookie)
             self.end_headers()
-            self.wfile.write(body)
+            if self.command != "HEAD":   # HEAD 요청은 헤더만 보낸다
+                self.wfile.write(body)
 
         def fail(self, code, msg, **extra):
             return self.send_json(code, {"ok": False, "error": msg, **extra})
@@ -228,6 +229,9 @@ def make_handler(auth, rules, opts, notifier):
         def do_GET(self):
             self.safely(self._get)
 
+        def do_HEAD(self):     # Render 등이 상태 확인에 쓰는 요청. GET 과 같지만 본문은 보내지 않는다
+            self.safely(self._get)
+
         def do_POST(self):
             self.safely(self._post)
 
@@ -247,20 +251,29 @@ def make_handler(auth, rules, opts, notifier):
                 return self.send_photo(parts[1])
             if len(parts) == 3 and parts[0] == "auth" and parts[1] in PROVIDERS and parts[2] == "login":
                 try:
-                    return self.redirect(auth.login_url(parts[1], f"{self.base_url()}/auth/{parts[1]}/callback"))
+                    return self.redirect(auth.login_url(parts[1], f"{self.base_url()}/auth/{parts[1]}/callback",
+                                                        app=q.get("app", ["0"])[0] == "1"))
                 except ValueError as e:
                     return self.redirect("/?login_error=" + urllib.parse.quote(str(e)))
             if len(parts) == 3 and parts[0] == "auth" and parts[1] in PROVIDERS and parts[2] == "callback":
                 if "error" in q:
                     return self.redirect("/?login_error=" + urllib.parse.quote("로그인을 취소했습니다."))
                 try:
-                    uid = auth.callback(parts[1], q.get("code", [""])[0], q.get("state", [""])[0],
-                                        f"{self.base_url()}/auth/{parts[1]}/callback")
-                    print(f"[로그인] {uid}")
+                    uid, app = auth.callback(parts[1], q.get("code", [""])[0], q.get("state", [""])[0],
+                                             f"{self.base_url()}/auth/{parts[1]}/callback")
+                    print(f"[로그인] {uid}" + (" (앱)" if app else ""))
+                    if app:
+                        return self.send_app_return(auth.issue_app_token(uid))
                     return self.redirect("/", auth.make_cookie(uid))
                 except Exception as e:   # 외부 서버 오류 포함
                     print(f"[로그인 실패] {parts[1]}: {e}")
                     return self.redirect("/?login_error=" + urllib.parse.quote("로그인에 실패했습니다. 다시 시도해 주세요."))
+            if url.path == "/auth/app-session":
+                # 안드로이드 앱이 1회용 토큰으로 로그인 쿠키를 받는다
+                uid = auth.consume_app_token(q.get("token", [""])[0])
+                if not uid:
+                    return self.redirect("/?login_error=" + urllib.parse.quote("로그인 시간이 지났어요. 다시 시도해 주세요."))
+                return self.redirect("/", auth.make_cookie(uid))
             if url.path == "/auth/dev/login":
                 # 개발용: --dev-login 으로 켰고, 이 PC에서 직접 접속한 경우에만
                 if not auth.dev_login or opts.behind_proxy or self.client_address[0] not in ("127.0.0.1", "::1"):
@@ -269,6 +282,28 @@ def make_handler(auth, rules, opts, notifier):
                 uid = auth.upsert_user("dev", name, f"[개발] {name}", "", role="admin" if q.get("admin", ["0"])[0] == "1" else None)
                 return self.redirect("/", auth.make_cookie(uid))
             self.fail(404, "없는 주소입니다.")
+
+        def send_app_return(self, token):
+            """휴대폰 브라우저에서 로그인을 마친 뒤 앱으로 돌아가는 화면."""
+            t = urllib.parse.quote(token)
+            intent = f"intent://login?token={t}#Intent;scheme=smokingfinder;package=kr.cheonan.smokingfinder;end"
+            html = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>앱으로 돌아가기</title>
+<style>body{{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+background:#ffe600;color:#231815;font-family:sans-serif;text-align:center;padding:24px;box-sizing:border-box}}
+a{{display:inline-block;background:#231815;color:#fff;font-weight:700;padding:14px 22px;border-radius:999px;text-decoration:none}}</style>
+</head><body><h1 style="margin:0;font-size:1.4rem">로그인 완료</h1><p style="margin:0">흡연장 찾기 앱으로 돌아갑니다.</p>
+<a id="back" href="{intent}">앱으로 돌아가기</a>
+<script>setTimeout(function(){{location.href=document.getElementById('back').href}},300)</script></body></html>"""
+            body = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.headers_common()
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
 
         def send_file(self, name, ctype):
             try:
@@ -282,7 +317,8 @@ def make_handler(auth, rules, opts, notifier):
             self.send_header("Cache-Control", "no-cache")
             self.headers_common()
             self.end_headers()
-            self.wfile.write(body)
+            if self.command != "HEAD":   # HEAD 요청은 헤더만 보낸다
+                self.wfile.write(body)
 
         def get_places(self):
             """공개된 흡연장 전체 목록. 위치를 받지 않는다 — 거리 계산은 화면(휴대폰)에서 한다."""
@@ -331,7 +367,8 @@ def make_handler(auth, rules, opts, notifier):
             self.send_header("Cache-Control", "public, max-age=86400" if ph["status"] == "approved" else "private, no-store")
             self.headers_common()
             self.end_headers()
-            self.wfile.write(body)
+            if self.command != "HEAD":   # HEAD 요청은 헤더만 보낸다
+                self.wfile.write(body)
 
         def get_health(self):
             """서버 감시용: DB를 읽을 수 있으면 ok."""
