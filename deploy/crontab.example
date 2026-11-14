@@ -1,0 +1,5 @@
+# crontab -e 로 열어서 아래 줄을 붙여 넣는다 (도메인·경로·백업 위치를 바꿀 것)
+# 매일 새벽 3시 30분: 서버 밖으로 백업
+30 3 * * * cd /home/user01/smoking_finder && BACKUP_DEST=/mnt/backup/smoking ./deploy/backup_offsite.sh >> data/backup.log 2>&1
+# 5분마다: 서버가 살아 있는지 확인, 멈추면 관리자 알림
+*/5 * * * * cd /home/user01/smoking_finder && python3 monitor.py https://smoke.example.com >> data/monitor.log 2>&1

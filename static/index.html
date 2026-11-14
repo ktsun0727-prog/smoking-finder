@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffe600">
+<meta name="description" content="천안시 흡연구역을 내 위치에서 가까운 순으로 찾아 주는 서비스">
+<title>천안 흡연장 찾기</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f0f2f5;
+    --text: #1b1f24; --muted: #69727c; --line: #e3e6ea;
+    --accent: #2f6fde; --accent-soft: #e6eefc; --on-accent: #fff;
+    --warn: #b4531b; --warn-soft: #fbeee6; --demo: #8a5a00; --demo-soft: #fff4d6;
+    --user: #19734a; --user-soft: #e2f5ea; --cand: #6a4bb3; --cand-soft: #eee8fb;
+    --shadow: 0 6px 24px rgba(20, 30, 45, .14);
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121417; --surface: #1c1f23; --surface-2: #262a2f;
+      --text: #e9ebee; --muted: #9ba4ad; --line: #30353b;
+      --accent: #6a9bf1; --accent-soft: #1f2d45; --on-accent: #0d1420;
+      --warn: #ec9a68; --warn-soft: #3a2519; --demo: #f2c25c; --demo-soft: #3a2e12;
+      --user: #6fd3a0; --user-soft: #16352a; --cand: #b9a2f2; --cand-soft: #2c2342;
+      --shadow: 0 6px 24px rgba(0, 0, 0, .45);
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+  a { color: var(--accent); }
+
+  #map { position: fixed; inset: 0; background: var(--surface-2); }
+  #map.no-map { display: flex; align-items: center; justify-content: center; color: var(--muted); padding: 16px; text-align: center; }
+  body.adding #map { cursor: crosshair; }
+
+  .topbar { position: fixed; z-index: 1000; top: max(12px, env(safe-area-inset-top)); left: 16px; right: 16px;
+    display: flex; align-items: center; gap: 6px; background: var(--surface); border-radius: 999px; box-shadow: var(--shadow); padding: 8px 8px 8px 16px; }
+  .topbar h1 { font-size: 1rem; margin: 0; font-weight: 700; white-space: nowrap; }
+  .pill { margin-left: auto; font-size: .75rem; padding: 6px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .pill.ok { background: var(--accent-soft); color: var(--accent); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.demo { background: var(--demo-soft); color: var(--demo); }
+  .add-btn { padding: 6px 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: .8rem; font-weight: 700; white-space: nowrap; flex: none; }
+  .user-btn { position: relative; padding: 6px 10px; border-radius: 999px; background: var(--surface-2); font-size: .8rem; font-weight: 600; white-space: nowrap; max-width: 104px; overflow: hidden; text-overflow: ellipsis; flex: none; }
+  .user-btn .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: #e60012; color: #fff; font-size: .7rem; line-height: 18px; text-align: center; }
+  @media (max-width: 380px) { .topbar h1 { display: none; } }
+
+  .fab { position: fixed; z-index: 1000; right: 16px; bottom: calc(var(--sheet-h, 42vh) + 16px); width: 52px; height: 52px; border-radius: 50%;
+    background: var(--surface); box-shadow: var(--shadow); display: grid; place-items: center; transition: bottom .25s ease; }
+  .fab svg { width: 24px; height: 24px; color: var(--accent); }
+  .fab.busy svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .sheet { position: fixed; z-index: 1001; left: 0; right: 0; bottom: 0; height: var(--sheet-h, 42vh);
+    background: var(--surface); border-radius: var(--radius) var(--radius) 0 0; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; transition: height .25s ease; padding-bottom: env(safe-area-inset-bottom); }
+  .handle { width: 100%; padding: 10px 0 4px; display: grid; place-items: center; }
+  .handle span { width: 40px; height: 5px; border-radius: 3px; background: var(--line); }
+  .sheet-head { padding: 4px 16px 10px; }
+  .summary { display: flex; align-items: baseline; gap: 8px; }
+  .summary strong { font-size: 1.05rem; }
+  .summary small { color: var(--muted); }
+  .link-btn { margin-left: auto; color: var(--accent); font-size: .85rem; padding: 4px 0; white-space: nowrap; }
+  .search { margin-top: 8px; position: relative; }
+  .search input { padding-left: 34px; }
+  .search::before { content: "🔍"; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: .85rem; opacity: .6; }
+  .chips { display: flex; gap: 6px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; align-items: center; }
+  .chip { padding: 7px 12px; border-radius: 999px; background: var(--surface-2); font-size: .85rem; white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .chip.cand[aria-pressed="true"] { background: var(--cand); color: #fff; }
+  .chip.fav[aria-pressed="true"] { background: #e0a100; color: #1b1f24; }
+  .chips .sep { width: 1px; height: 20px; background: var(--line); flex: none; margin: 0 2px; }
+  .manual { display: none; gap: 8px; margin-top: 10px; }
+  .manual.open { display: flex; }
+  input, textarea, select { font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--text); width: 100%; min-width: 0; }
+  textarea { resize: vertical; min-height: 90px; }
+  .manual input { flex: 1; }
+  .manual button { padding: 9px 14px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-weight: 600; flex: none; }
+
+  .list { flex: 1; overflow-y: auto; padding: 0 8px 12px; overscroll-behavior: contain; }
+  .item { display: flex; gap: 12px; align-items: flex-start; width: 100%; text-align: left; padding: 12px 8px; border-radius: 12px; cursor: pointer; }
+  .item + .item { border-top: 1px solid var(--line); }
+  .item:hover { background: var(--surface-2); }
+  .item.sel { background: var(--accent-soft); border-top-color: transparent; cursor: default; }
+  .item.sel + .item { border-top-color: transparent; }
+  .num { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 700; font-size: .85rem; }
+  .item.sel .num { background: var(--accent); color: var(--on-accent); }
+  .body { flex: 1; min-width: 0; }
+  .name { font-weight: 600; }
+  .addr, .facts { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+  .facts .old { color: var(--warn); }
+  .badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: .7rem; font-weight: 700; vertical-align: 1px; }
+  .badge.synthetic { background: var(--demo-soft); color: var(--demo); }
+  .badge.user { background: var(--user-soft); color: var(--user); }
+  .badge.candidate { background: var(--cand-soft); color: var(--cand); }
+  .badge.pending { background: var(--warn-soft); color: var(--warn); }
+  .star { color: #e0a100; margin-left: 4px; }
+  .meta { flex: none; text-align: right; }
+  .dist { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .walk { color: var(--muted); font-size: .8rem; }
+  .actions { display: none; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .item.sel .actions { display: flex; }
+  .photos { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .photos img { width: 96px; height: 72px; object-fit: cover; border-radius: 8px; display: block; background: var(--surface-2); }
+  .link-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .link-group > span { font-size: .75rem; color: var(--muted); width: 48px; flex: none; }
+  .link-group a, .link-group button { font-size: .85rem; padding: 7px 12px; border-radius: 999px; text-decoration: none; background: var(--surface); color: var(--accent); border: 1px solid var(--line); }
+  .link-group a.main { background: var(--accent); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+  .link-group .btn-ok { background: var(--user); color: #fff; border-color: transparent; font-weight: 600; }
+  .link-group .btn-no { background: var(--warn-soft); color: var(--warn); border-color: transparent; font-weight: 600; }
+  .link-group .note { font-size: .8rem; color: var(--muted); }
+
+  .state { padding: 24px 16px; text-align: center; color: var(--muted); }
+  .state .icon { font-size: 2rem; margin-bottom: 8px; }
+  .state p { margin: 4px 0; }
+  .state button { margin-top: 12px; padding: 10px 16px; border-radius: 10px; background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .skeleton { height: 56px; margin: 8px; border-radius: 12px; background: linear-gradient(90deg, var(--surface-2), var(--line), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  .add-form { flex: 1; overflow-y: auto; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .add-form label, .field-label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .add-form .coords, .add-form .facility { display: flex; gap: 8px; }
+  .add-form .facility > div { flex: 1; min-width: 0; }
+  .hint { font-size: .85rem; color: var(--muted); background: var(--surface-2); padding: 10px 12px; border-radius: 10px; margin: 0; }
+  .hint.set { color: var(--user); background: var(--user-soft); }
+  .row { display: flex; gap: 8px; }
+  .row > button { flex: 1; padding: 12px; border-radius: 10px; font-weight: 600; }
+  .btn-main { background: var(--accent); color: var(--on-accent); }
+  .btn-main:disabled { opacity: .5; cursor: default; }
+  .btn-sub { background: var(--surface-2); }
+  .btn-danger { background: var(--warn-soft); color: var(--warn); }
+  .err { color: var(--warn); font-size: .85rem; margin: 0; min-height: 1em; }
+
+  .foot { padding: 8px 16px 12px; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--line); }
+  .foot a, .foot button { color: var(--muted); text-decoration: underline; font-size: inherit; padding: 0; }
+  .demo-banner { display: none; margin: 0 16px 8px; padding: 8px 12px; border-radius: 10px; background: var(--demo-soft); color: var(--demo); font-size: .8rem; font-weight: 600; }
+  .demo .demo-banner { display: block; }
+
+  .pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #fff; border: 2px solid #2f6fde; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+  .pin b { transform: rotate(45deg); font: 700 12px system-ui, sans-serif; color: #2f6fde; }
+  .pin.user { border-color: #19734a; } .pin.user b { color: #19734a; }
+  .pin.candidate { border-color: #6a4bb3; border-style: dashed; } .pin.candidate b { color: #6a4bb3; }
+  .pin.pending { border-color: #b4531b; border-style: dashed; } .pin.pending b { color: #b4531b; }
+  .pin.sel { background: #2f6fde; border-color: #2f6fde; border-style: solid; } .pin.sel b { color: #fff; }
+  .pin.draft { background: #19734a; border-color: #fff; width: 34px; height: 34px; } .pin.draft b { color: #fff; font-size: 16px; }
+  .me { width: 18px; height: 18px; border-radius: 50%; background: #2f6fde; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47,111,222,.25); }
+  .leaflet-control-attribution { font-size: 10px; }
+  .toast { position: fixed; z-index: 4000; left: 50%; top: 72px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-size: .85rem; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+  .toast.show { opacity: .92; }
+
+  dialog { border: 0; border-radius: var(--radius); padding: 0; background: var(--surface); color: var(--text); box-shadow: var(--shadow); width: min(440px, calc(100% - 32px)); max-height: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  .dlg { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .dlg h2 { margin: 0; font-size: 1.15rem; }
+  .muted { color: var(--muted); margin: 0; font-size: .9rem; }
+  .small { font-size: .8rem; }
+  .wide { width: 100%; padding: 12px; border-radius: 10px; font-weight: 600; }
+  .provider-btns { display: flex; flex-direction: column; gap: 8px; }
+  .provider-btns a { display: block; text-align: center; padding: 12px; border-radius: 10px; font-weight: 700; text-decoration: none; }
+  .p-google { background: #fff; color: #1f1f1f; border: 1px solid #dadce0; }
+  .p-naver { background: #03c75a; color: #fff; }
+  .p-kakao { background: #fee500; color: #191919; }
+  .p-dev { background: var(--demo-soft); color: var(--demo); border: 1px dashed var(--demo); }
+  .p-off { opacity: .4; pointer-events: none; }
+  .dev-login { border-top: 1px solid var(--line); padding-top: 10px; }
+  .dev-login summary { cursor: pointer; font-size: .85rem; color: var(--muted); }
+  .dev-fields { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  .tab { padding: 8px 10px; font-size: .85rem; white-space: nowrap; border-bottom: 2px solid transparent; color: var(--muted); }
+  .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+  .admin-list { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow-y: auto; }
+  .card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: .9rem; }
+  .card .row { margin-top: 8px; flex-wrap: wrap; }
+  .card .row > button { padding: 8px; font-size: .85rem; flex: 1 1 auto; }
+  .card img { max-width: 100%; max-height: 220px; border-radius: 8px; margin-top: 6px; display: block; }
+  .card .msg { white-space: pre-wrap; margin: 6px 0 0; }
+  .btn-ok { background: var(--user); color: #fff; }
+  .btn-no { background: var(--warn-soft); color: var(--warn); }
+  .log-line { font-size: .8rem; color: var(--muted); border-bottom: 1px dashed var(--line); padding: 4px 0; }
+
+  .splash { --sign-yellow: #ffe600; --sign-red: #e60012; --sign-black: #231815;
+    position: fixed; inset: 0; z-index: 3000; background: var(--sign-yellow); color: var(--sign-black);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    padding: max(24px, env(safe-area-inset-top)) 0 max(24px, env(safe-area-inset-bottom)); transition: opacity .45s ease, transform .45s ease; }
+  .splash.leaving { opacity: 0; transform: translateX(-12%); pointer-events: none; }
+  .sign { width: 100%; max-width: 640px; display: flex; flex-direction: column; }
+  .sign-top { display: flex; align-items: center; gap: clamp(12px, 4vw, 28px); padding: 0 16px 20px; justify-content: center; }
+  .nosmoke { width: clamp(84px, 26vw, 150px); flex: none; }
+  .smoke { animation: drift 2.4s ease-in-out infinite; }
+  @keyframes drift { 50% { transform: translateY(-3px); opacity: .6; } }
+  .sign-title { min-width: 0; }
+  .ko-red { margin: 0; color: var(--sign-red); font-size: clamp(2.6rem, 14vw, 5.2rem); font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+  .en-black { margin: 4px 0 0; font-size: clamp(1rem, 5.2vw, 2rem); font-weight: 800; }
+  .sign-band { width: 100%; background: var(--sign-black); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: clamp(16px, 6vw, 40px); padding: clamp(18px, 5vw, 30px) 16px; border: 0; position: relative; overflow: hidden; }
+  .sign-band::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.12) 50%, transparent 70%);
+    transform: translateX(100%); animation: shine 3s ease-in-out infinite; }
+  @keyframes shine { 60%, 100% { transform: translateX(-100%); } }
+  .sign-band:focus-visible { outline: 4px solid var(--sign-red); outline-offset: -4px; }
+  .arrow { width: clamp(70px, 22vw, 130px); flex: none; animation: nudge 1.6s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform: translateX(-10px); } }
+  .splash.leaving .arrow { animation: none; transform: translateX(-140%); transition: transform .4s ease-in; }
+  .band-text { display: flex; flex-direction: column; align-items: center; }
+  .ko-white { font-size: clamp(2.4rem, 13vw, 4.8rem); font-weight: 900; letter-spacing: -.02em; line-height: 1.05; }
+  .en-white { font-size: clamp(.95rem, 4.6vw, 1.7rem); font-weight: 800; margin-top: 2px; }
+  .sign-bottom { margin: 0; padding: 20px 16px 0; text-align: center; font-size: clamp(1.05rem, 5.2vw, 1.9rem); font-weight: 800; letter-spacing: -.02em; }
+  .splash-foot { text-align: center; padding: 0 16px; font-size: .85rem; }
+  .splash-foot p { margin: 0 0 10px; opacity: .8; }
+  .splash-foot button { font-weight: 700; padding: 10px 16px; border-radius: 999px; border: 2px solid var(--sign-black); color: var(--sign-black); margin: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    .smoke, .arrow, .sign-band::after, .skeleton { animation: none; }
+    .splash { transition: opacity .2s; } .splash.leaving { transform: none; }
+  }
+  @media (min-width: 900px) {
+    .sheet { top: 76px; bottom: 16px; left: 16px; right: auto; width: 400px; height: auto !important; border-radius: var(--radius); }
+    .handle { display: none; }
+    .sheet-head { padding-top: 14px; }
+    .fab { bottom: 32px !important; right: 24px; }
+    .topbar { right: auto; width: 400px; }
+  }
+</style>
+</head>
+<body>
+  <!-- 시작 화면. data-en: 영어 모드일 때 바꿔 넣을 글자 -->
+  <section id="splash" class="splash" aria-label="시작 화면">
+    <div class="sign">
+      <div class="sign-top">
+        <svg class="nosmoke" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="44" fill="#fff" stroke="#e60012" stroke-width="9"/>
+          <path d="M30 34c-6-5 2-9-2-14M38 34c-6-5 2-9-2-14" fill="none" stroke="#231815" stroke-width="3.5" stroke-linecap="round" class="smoke"/>
+          <rect x="20" y="52" width="48" height="8" fill="#231815"/>
+          <rect x="68" y="52" width="10" height="8" fill="#231815" opacity=".55"/>
+          <line x1="20" y1="20" x2="80" y2="80" stroke="#e60012" stroke-width="9"/>
+        </svg>
+        <div class="sign-title"><h2 class="ko-red" data-en="No Smoking">금연구역</h2><p class="en-black" data-en="금연구역">No Smoking Area</p></div>
+      </div>
+      <button class="sign-band" id="splashGo" aria-label="내 위치에서 가까운 흡연구역 찾기" data-en-aria="Find smoking areas near me">
+        <svg class="arrow" viewBox="0 0 120 60" aria-hidden="true"><path d="M0 30 38 0v18h82v24H38v18z" fill="#fff"/></svg>
+        <span class="band-text"><span class="ko-white" data-en="Smoking">흡연구역</span><span class="en-white" data-en="흡연구역">Smoking Area</span></span>
+      </button>
+      <p class="sign-bottom" data-en="Please smoke only in designated areas!">흡연은 지정된 구역을 이용해주세요!</p>
+    </div>
+    <div class="splash-foot">
+      <p data-en="<b>Cheonan Smoking Area Finder</b> · Tap the black band to find the nearest smoking areas.<br>Your location stays on this device and is never sent to our server."><b>천안 흡연장 찾기</b> · 검은 띠를 누르면 내 위치에서 가까운 흡연구역을 찾아요<br>내 위치는 이 기기 안에서만 쓰고 서버로 보내지 않아요</p>
+      <button id="splashSkip" data-en="Browse the map first">위치 없이 지도 먼저 보기</button>
+      <button class="lang-toggle">English</button>
+    </div>
+  </section>
+
+  <div id="map" role="region" aria-label="지도"></div>
+
+  <header class="topbar">
+    <h1 data-en="🚬 Cheonan">🚬 천안 흡연장</h1>
+    <span class="pill" id="dataPill">…</span>
+    <button class="add-btn" id="addBtn" data-en="＋ Add">＋ 추가</button>
+    <button class="user-btn" id="userBtn" aria-haspopup="dialog">로그인</button>
+  </header>
+
+  <button class="fab" id="locate" aria-label="내 위치로 찾기" data-en-aria="Find near me">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+
+  <section class="sheet" id="sheet" aria-label="흡연장 목록">
+    <button class="handle" id="handle" aria-label="목록 펼치기/접기" data-en-aria="Expand or collapse list"><span></span></button>
+
+    <div id="searchView" style="display:contents">
+      <div class="demo-banner" data-en="Demo screen — these are NOT real smoking areas.">예시 화면입니다 — 표시된 장소는 실제 흡연장이 아닙니다.</div>
+      <div class="sheet-head">
+        <div class="summary">
+          <strong id="title"></strong>
+          <small id="subtitle"></small>
+          <button class="link-btn" id="toggleManual" data-en="Coordinates">좌표 입력</button>
+        </div>
+        <div class="search"><input id="q" type="search" placeholder="흡연장 이름으로 찾기" data-en-ph="Search by name" aria-label="흡연장 이름 검색" autocomplete="off"></div>
+        <div class="chips" role="group" aria-label="반경과 표시 옵션">
+          <button class="chip" data-r="300">300m</button>
+          <button class="chip" data-r="500">500m</button>
+          <button class="chip" data-r="1000" aria-pressed="true">1km</button>
+          <button class="chip" data-r="" data-en="All">전체</button>
+          <span class="sep"></span>
+          <button class="chip fav" id="favChip" aria-pressed="false" data-en="★ Saved">★ 즐겨찾기</button>
+          <button class="chip cand" id="candChip" aria-pressed="false" data-en="Unverified">미확인 후보</button>
+        </div>
+        <form class="manual" id="manual">
+          <input id="lat" inputmode="decimal" placeholder="위도 36.8151" data-en-ph="Latitude 36.8151" aria-label="위도">
+          <input id="lon" inputmode="decimal" placeholder="경도 127.1139" data-en-ph="Longitude 127.1139" aria-label="경도">
+          <button type="submit" data-en="Go">찾기</button>
+        </form>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="foot"><span data-en="Straight-line distance; walking time assumes 67 m/min. Locations may be off by tens of meters.">거리는 직선거리, 도보 시간은 분당 67m 기준 추정입니다. 좌표는 오차가 있을 수 있어요.</span> ·
+        <button type="button" id="feedbackLink" data-en="Contact">문의하기</button> ·
+        <a href="/terms" target="_blank" data-en="Terms">이용약관</a> · <a href="/privacy" target="_blank" data-en="Privacy">개인정보처리방침</a> ·
+        <button type="button" class="lang-toggle">English</button></div>
+    </div>
+
+    <form class="add-form" id="addView" hidden>
+      <div class="summary" style="padding-top:4px"><strong id="addTitle"></strong><button type="button" class="link-btn" id="addCancelTop" data-en="Close">닫기</button></div>
+      <p class="hint" id="addHint"></p>
+      <div><label for="addName" data-en="Name (required)">이름 (필수)</label><input id="addName" maxlength="50" placeholder="예: ○○관 뒤편 흡연부스" data-en-ph="e.g. Booth behind the library" required></div>
+      <div><label for="addMemo" data-en="Note (optional)">메모 (선택)</label><input id="addMemo" maxlength="200" placeholder="예: 건물 뒤 주차장 쪽" data-en-ph="e.g. Next to the rear parking lot"></div>
+      <div class="facility">
+        <div><label for="addRoof" data-en="Roof">지붕</label><select id="addRoof"><option value="" data-en="Unknown">모름</option><option value="yes" data-en="Yes">있음</option><option value="no" data-en="No">없음</option></select></div>
+        <div><label for="addAsh" data-en="Ashtray">재떨이</label><select id="addAsh"><option value="" data-en="Unknown">모름</option><option value="yes" data-en="Yes">있음</option><option value="no" data-en="No">없음</option></select></div>
+        <div><label for="addSet" data-en="Type">형태</label><select id="addSet"><option value="" data-en="Unknown">모름</option><option value="outdoor" data-en="Outdoor">실외</option><option value="indoor" data-en="Booth">실내·부스</option></select></div>
+      </div>
+      <div><span class="field-label" data-en="Location">위치</span>
+        <div class="coords">
+          <input id="addLat" inputmode="decimal" placeholder="위도" data-en-ph="Latitude" aria-label="위치 위도">
+          <input id="addLon" inputmode="decimal" placeholder="경도" data-en-ph="Longitude" aria-label="위치 경도">
+        </div></div>
+      <button type="button" class="btn-sub" id="addHere" style="padding:10px;border-radius:10px" data-en="📍 Use my current location">📍 지금 내 위치로 정하기</button>
+      <p class="err" id="addErr"></p>
+      <div class="row"><button type="button" class="btn-sub" id="addCancel" data-en="Cancel">취소</button><button type="submit" class="btn-main" id="addSubmit"></button></div>
+      <p class="hint" id="addRule"></p>
+    </form>
+  </section>
+
+  <dialog id="loginDlg" aria-labelledby="loginTitle">
+    <form method="dialog" class="dlg">
+      <h2 id="loginTitle" data-en="Log in">로그인</h2>
+      <p class="muted" data-en="Log in to add places, confirm or report information, and save favorites.">흡연장을 추가하거나, 정보를 확인·신고하거나, 즐겨찾기를 쓰려면 로그인하세요.</p>
+      <div id="providerBtns" class="provider-btns"></div>
+      <p class="muted small" id="providerNote"></p>
+      <p class="muted small" data-en="By logging in you agree to the <a href='/terms' target='_blank'>Terms</a> and <a href='/privacy' target='_blank'>Privacy Policy</a>.">로그인하면 <a href="/terms" target="_blank">이용약관</a>과 <a href="/privacy" target="_blank">개인정보처리방침</a>에 동의하는 것으로 봅니다.</p>
+      <details class="dev-login">
+        <summary data-en="Developer login">개발자 로그인</summary>
+        <div class="dev-fields">
+          <input id="devId" autocomplete="username" placeholder="아이디" data-en-ph="ID" aria-label="개발자 아이디">
+          <input id="devPw" type="password" autocomplete="current-password" placeholder="비밀번호" data-en-ph="Password" aria-label="개발자 비밀번호">
+          <button type="button" class="btn-main wide" id="devLoginBtn" data-en="Log in">로그인</button>
+          <p class="err small" id="devErr"></p>
+        </div>
+      </details>
+      <button class="btn-sub wide" value="close" data-en="Close">닫기</button>
+    </form>
+  </dialog>
+
+  <dialog id="userDlg" aria-labelledby="userTitle">
+    <form method="dialog" class="dlg">
+      <h2 id="userTitle"></h2>
+      <p class="muted small" id="userSub"></p>
+      <button type="button" class="btn-main wide" id="openAdmin" hidden>👑 관리자 화면</button>
+      <button type="button" class="btn-sub wide" id="feedbackFromUser" data-en="✉️ Contact us">✉️ 문의하기</button>
+      <p class="muted small"><a href="/privacy" target="_blank" data-en="Privacy Policy">개인정보처리방침</a> · <a href="/terms" target="_blank" data-en="Terms">이용약관</a></p>
+      <div class="row"><button type="button" class="btn-sub" id="logoutBtn" data-en="Log out">로그아웃</button><button class="btn-main" value="close" data-en="Close">닫기</button></div>
+      <button type="button" class="btn-danger wide" id="deleteBtn" data-en="Delete my account">회원 탈퇴</button>
+    </form>
+  </dialog>
+
+  <dialog id="issueDlg" aria-labelledby="issueTitle">
+    <form method="dialog" class="dlg">
+      <h2 id="issueTitle" data-en="Report a problem">정보가 달라요</h2>
+      <p class="muted small" id="issuePlace"></p>
+      <div><label class="field-label" for="issueKind" data-en="What is wrong?">무엇이 다른가요?</label>
+        <select id="issueKind"><option value="gone" data-en="It no longer exists">흡연장이 없어졌어요</option><option value="moved" data-en="The location is wrong">위치가 달라요</option><option value="info" data-en="Name or details are wrong">이름·시설 정보가 틀려요</option></select></div>
+      <div><label class="field-label" for="issueMemo" data-en="Details (optional)">자세한 내용 (선택)</label><input id="issueMemo" maxlength="200" placeholder="예: 건물 반대편으로 옮겨졌어요" data-en-ph="e.g. Moved to the other side of the building"></div>
+      <p class="err" id="issueErr"></p>
+      <div class="row"><button class="btn-sub" value="close" data-en="Cancel">취소</button><button type="button" class="btn-main" id="issueSend" data-en="Send">보내기</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="feedbackDlg" aria-labelledby="fbTitle">
+    <form method="dialog" class="dlg">
+      <h2 id="fbTitle" data-en="Contact us">문의하기</h2>
+      <p class="muted small" data-en="Bugs, data corrections, ideas — anything is welcome. No login needed.">오류, 데이터 수정, 제안 등 무엇이든 보내 주세요. 로그인 없이도 보낼 수 있어요.</p>
+      <div><label class="field-label" for="fbCat" data-en="Type">종류</label>
+        <select id="fbCat"><option value="bug" data-en="Something is broken">오류·고장</option><option value="data" data-en="Smoking area info">흡연장 정보</option><option value="idea" data-en="Suggestion">제안</option><option value="other" data-en="Other">기타</option></select></div>
+      <div><label class="field-label" for="fbMsg" data-en="Message (5–1000 characters)">내용 (5~1000자)</label><textarea id="fbMsg" maxlength="1000"></textarea></div>
+      <div><label class="field-label" for="fbContact" data-en="Reply contact (optional)">답변 받을 연락처 (선택)</label><input id="fbContact" maxlength="100" placeholder="이메일 등 — 답변에만 쓰고 공개하지 않아요" data-en-ph="Email etc. — used only to reply, never shown"></div>
+      <p class="err" id="fbErr"></p>
+      <div class="row"><button class="btn-sub" value="close" data-en="Cancel">취소</button><button type="button" class="btn-main" id="fbSend" data-en="Send">보내기</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="adminDlg" aria-labelledby="adminTitle" style="width:min(580px, calc(100% - 32px))">
+    <form method="dialog" class="dlg">
+      <h2 id="adminTitle">관리자</h2>
+      <div class="tabs" role="tablist">
+        <button type="button" class="tab" role="tab" data-tab="pending" aria-selected="true">승인 대기</button>
+        <button type="button" class="tab" role="tab" data-tab="issues">신고</button>
+        <button type="button" class="tab" role="tab" data-tab="photos">사진</button>
+        <button type="button" class="tab" role="tab" data-tab="feedback">문의</button>
+        <button type="button" class="tab" role="tab" data-tab="hidden">숨김</button>
+        <button type="button" class="tab" role="tab" data-tab="users">회원</button>
+        <button type="button" class="tab" role="tab" data-tab="log">기록</button>
+      </div>
+      <div class="admin-list" id="adminList"></div>
+      <button class="btn-sub wide" value="close">닫기</button>
+    </form>
+  </dialog>
+
+  <input type="file" id="photoInput" accept="image/*" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const CHEONAN_HALL = [36.8151, 127.1139];
+const WALK_M_PER_MIN = 67, TOP_N = 10, OLD_DAYS = 180;
+const DEMO = new URLSearchParams(location.search).has("demo");
+const APP = window.SmokingApp || null;   // 안드로이드 앱 안에서 열렸을 때 앱이 넣어 주는 연결 통로
+
+/* ---------- 언어 ---------- */
+let LANG = (navigator.language || "ko").toLowerCase().startsWith("ko") ? "ko" : "en";   // 기기 언어가 한국어가 아니면 영어
+try { const saved = localStorage.getItem("lang"); if (saved === "ko" || saved === "en") LANG = saved; } catch {}
+const tr = (ko, en) => LANG === "en" ? en : ko;
+function applyLang() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll("[data-en]").forEach(el => {
+    if (el.dataset.ko === undefined) el.dataset.ko = el.innerHTML;
+    el.innerHTML = LANG === "en" ? el.dataset.en : el.dataset.ko;
+  });
+  document.querySelectorAll("[data-en-ph]").forEach(el => {
+    if (el.dataset.koPh === undefined) el.dataset.koPh = el.placeholder;
+    el.placeholder = LANG === "en" ? el.dataset.enPh : el.dataset.koPh;
+  });
+  document.querySelectorAll("[data-en-aria]").forEach(el => {
+    if (el.dataset.koAria === undefined) el.dataset.koAria = el.getAttribute("aria-label");
+    el.setAttribute("aria-label", LANG === "en" ? el.dataset.enAria : el.dataset.koAria);
+  });
+  document.querySelectorAll(".lang-toggle").forEach(b => b.textContent = LANG === "en" ? "한국어" : "English");
+  document.title = tr("천안 흡연장 찾기", "Cheonan Smoking Area Finder");
+}
+document.querySelectorAll(".lang-toggle").forEach(b => b.onclick = () => {
+  LANG = LANG === "en" ? "ko" : "en";
+  try { localStorage.setItem("lang", LANG); } catch {}
+  applyLang(); updateUserBtn(); updatePill(); refresh(false);
+});
+
+const KIND_LABEL = () => ({ synthetic: tr("가상", "Demo"), user: tr("제보", "User"), candidate: tr("미확인 후보", "Unverified") });
+const PROVIDER_LABEL = { google: "Google", naver: "Naver", kakao: "Kakao", dev: "Dev", local: "Developer" };
+const ISSUE_LABEL = { gone: "없어졌어요", moved: "위치가 달라요", info: "정보가 틀려요" };
+const FB_LABEL = { bug: "오류", data: "흡연장 정보", idea: "제안", other: "기타" };
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtDist = m => m < 1000 ? `${Math.round(m).toLocaleString()}m` : `${(m / 1000).toFixed(1)}km`;
+const fmtWalk = m => tr(`도보 약 ${Math.max(1, Math.round(m / WALK_M_PER_MIN))}분`, `~${Math.max(1, Math.round(m / WALK_M_PER_MIN))} min walk`);
+
+let ME = null, CONFIG = { required: 3, gone_required: 3 }, PLACES = [], LOADED = false;
+const state = { origin: null, radius: "1000", query: "", favOnly: false, candidates: false,
+                results: [], total: 0, selected: -1, expanded: false, mode: null, editId: null, draft: null, issueId: null, photoId: null };
+if (DEMO) document.body.classList.add("demo");
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const res = await fetch(path, opt);
+  let data = {};
+  try { data = await res.json(); } catch {}
+  if (res.status === 401 && body !== undefined && !path.startsWith("/auth/")) { toast(tr("로그인이 필요합니다", "Please log in")); openLogin(); }
+  return { res, data };
+}
+
+/* ---------- 지도 ---------- */
+let map = null, meMarker = null, radiusCircle = null, pinLayer = null, draftMarker = null;
+function initMap(tiles) {
+  if (!window.L) {
+    const m = $("map"); m.classList.add("no-map");
+    m.textContent = tr("지도를 불러오지 못했습니다(인터넷 연결 확인). 목록은 계속 사용할 수 있습니다.", "Could not load the map (check your connection). The list still works.");
+    return;
+  }
+  map = L.map("map", { zoomControl: false }).setView(CHEONAN_HALL, 14);
+  L.tileLayer(tiles.url, { maxZoom: 19, attribution: tiles.attribution }).addTo(map);
+  pinLayer = L.layerGroup().addTo(map);
+  map.on("click", e => state.mode ? setDraft(e.latlng.lat, e.latlng.lng) : setOrigin(e.latlng.lat, e.latlng.lng, tr("지도에서 선택한 위치", "Using the point you tapped")));
+}
+function drawMap() {
+  if (!map) return;
+  pinLayer.clearLayers();
+  const { origin, radius, results, selected } = state;
+  if (radiusCircle) { map.removeLayer(radiusCircle); radiusCircle = null; }
+  if (origin) {
+    const ll = [origin.lat, origin.lon];
+    if (!meMarker) meMarker = L.marker(ll, { icon: L.divIcon({ className: "", html: '<div class="me"></div>', iconSize: [18, 18] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
+    else meMarker.setLatLng(ll);
+    if (radius && !state.mode && !state.query && !state.favOnly)
+      radiusCircle = L.circle(ll, { radius: +radius, color: "#2f6fde", weight: 1, fillOpacity: .06, interactive: false }).addTo(map);
+  }
+  const target = results[selected];
+  if (origin && target && !state.mode)
+    L.polyline([[origin.lat, origin.lon], [target.lat, target.lon]], { color: "#2f6fde", weight: 3, dashArray: "6 8", interactive: false }).addTo(pinLayer);
+  results.forEach((r, i) => {
+    const sel = i === selected, cls = r.status === "pending" ? "pending" : r.source;
+    L.marker([r.lat, r.lon], {
+      icon: L.divIcon({ className: "", html: `<div class="pin ${esc(cls)}${sel ? " sel" : ""}"><b>${i + 1}</b></div>`, iconSize: [30, 30], iconAnchor: [15, 30] }),
+      zIndexOffset: sel ? 500 : 0, title: r.name
+    }).on("click", ev => { L.DomEvent.stopPropagation(ev); if (!state.mode) select(i, true); }).addTo(pinLayer);
+  });
+}
+function fitView() {
+  if (!map) return;
+  const pts = state.results.slice(0, 5).map(r => [r.lat, r.lon]);
+  if (state.origin) pts.unshift([state.origin.lat, state.origin.lon]);
+  if (pts.length > 1) map.fitBounds(pts, { padding: [60, 60], maxZoom: 17 });
+  else if (pts.length) map.setView(pts[0], 15);
+  nudgeForSheet();
+}
+function nudgeForSheet() { if (map && innerWidth < 900) map.panBy([0, $("sheet").getBoundingClientRect().height / 2.5], { animate: false }); }
+
+/* ---------- 목록 계산 (위치는 이 기기 안에서만 사용) ---------- */
+function haversine(a, b, c, d) {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const h = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function compute() {
+  const o = state.origin, q = state.query.trim().toLowerCase();
+  if (!o && !q && !state.favOnly) { state.results = []; state.total = 0; return; }   // 위치를 정하기 전에는 '위치 알려주세요' 화면
+  let list = PLACES.filter(p => (state.candidates || p.source !== "candidate") && (!state.favOnly || p.favorite))
+    .map(p => ({ ...p, distance_m: o ? haversine(o.lat, o.lon, p.lat, p.lon) : null }));
+  if (q) list = list.filter(p => (p.name + " " + p.note + " " + p.address).toLowerCase().includes(q));
+  else if (o && state.radius && !state.favOnly) list = list.filter(p => p.distance_m <= +state.radius);
+  list.sort((a, b) => o ? a.distance_m - b.distance_m : a.name.localeCompare(b.name, "ko"));
+  state.total = list.length;
+  state.results = list.slice(0, TOP_N);
+}
+function refresh(fit) {
+  if (!LOADED) return;
+  const keep = state.results[state.selected]?.id;
+  compute();
+  state.selected = keep == null ? -1 : state.results.findIndex(r => r.id === keep);
+  renderList(); drawMap();
+  if (fit) fitView();
+}
+
+/* ---------- 목록 그리기 ---------- */
+function daysSince(d) { const t = Date.parse(d.length === 7 ? d + "-01" : d); return isNaN(t) ? null : (Date.now() - t) / 864e5; }
+function facts(r) {
+  const out = [];
+  if (r.roof) out.push(r.roof === "yes" ? tr("지붕 있음", "Roof") : tr("지붕 없음", "No roof"));
+  if (r.ashtray) out.push(r.ashtray === "yes" ? tr("재떨이 있음", "Ashtray") : tr("재떨이 없음", "No ashtray"));
+  if (r.setting) out.push(r.setting === "indoor" ? tr("실내·부스", "Booth") : tr("실외", "Outdoor"));
+  if (r.verified_at) {
+    const old = (daysSince(r.verified_at) ?? 0) > OLD_DAYS;
+    out.push(`<span class="${old ? "old" : ""}">${tr("확인", "Checked")} ${esc(r.verified_at)}${old ? tr(" (오래된 정보)", " (may be outdated)") : ""}</span>`);
+  }
+  if (r.photos?.length) out.push(`📷 ${r.photos.length}`);
+  return out.join(" · ");
+}
+function renderList() {
+  const { results, selected, origin, total } = state;
+  $("title").textContent = state.query ? tr("검색 결과", "Search results") : state.favOnly ? tr("즐겨찾기", "Saved") : tr("가까운 흡연장", "Nearby smoking areas");
+  $("subtitle").textContent = results.length ? tr(`${results.length}곳`, `${results.length}`) + (total > results.length ? tr(` / 총 ${total}곳`, ` of ${total}`) : "")
+    + (origin && state.radius && !state.query && !state.favOnly ? tr(` · 반경 ${fmtDist(+state.radius)}`, ` · within ${fmtDist(+state.radius)}`) : "") : "";
+  if (!results.length) return showEmpty();
+  const kl = KIND_LABEL();
+  $("list").innerHTML = results.map((r, i) => {
+    const label = r.status === "pending" ? tr(`확인 중 ${r.confirms}/${CONFIG.required}`, `Pending ${r.confirms}/${CONFIG.required}`) : kl[r.source];
+    const badge = label ? `<span class="badge ${r.status === "pending" ? "pending" : esc(r.source)}">${label}</span>` : "";
+    const f = facts(r);
+    return `
+    <div class="item${i === selected ? " sel" : ""}" data-i="${i}" role="button" tabindex="0">
+      <span class="num">${i + 1}</span>
+      <div class="body">
+        <div class="name">${esc(r.name)}${r.favorite ? '<span class="star">★</span>' : ""}${badge}</div>
+        <div class="addr">${esc(r.address || r.note) || tr("상세 설명 없음", "No description")}</div>
+        ${f ? `<div class="facts">${f}</div>` : ""}
+        <div class="actions">${i === selected ? actionButtons(r) : ""}</div>
+      </div>
+      <div class="meta">${r.distance_m == null ? "" : `<div class="dist">${fmtDist(r.distance_m)}</div><div class="walk">${fmtWalk(r.distance_m)}</div>`}</div>
+    </div>`;
+  }).join("");
+}
+function showEmpty() {
+  if (!PLACES.length) return showState("🗂️", [tr("아직 등록된 흡연장이 없습니다.", "No smoking areas yet."), tr("오른쪽 위 <b>＋ 추가</b>로 등록할 수 있어요.", "Use <b>＋ Add</b> at the top right.")]);
+  if (state.query) return showState("🔍", [tr(`'${esc(state.query)}'에 맞는 흡연장이 없습니다.`, `Nothing matches '${esc(state.query)}'.`)]);
+  if (state.favOnly) return showState("☆", [tr("즐겨찾기한 흡연장이 없습니다.", "No saved places yet."), tr("흡연장을 누른 뒤 ☆ 즐겨찾기를 눌러 보세요.", "Open a place and tap ☆ Save.")]);
+  if (!state.origin) return showState("📍", [tr("내 주변 흡연장을 찾으려면 위치를 알려주세요.", "Share your location to see nearby smoking areas."),
+    tr("위치는 이 기기 안에서만 쓰고 서버로 보내지 않아요.", "Your location stays on this device.")], { label: tr("내 위치로 찾기", "Find near me"), onClick: locate });
+  const wider = { "300": "500", "500": "1000", "1000": "" }[state.radius];
+  showState("🔍", [tr(`반경 ${fmtDist(+state.radius)} 안에 흡연장이 없습니다.`, `Nothing within ${fmtDist(+state.radius)}.`)],
+    wider !== undefined ? { label: wider ? tr(`${fmtDist(+wider)}로 넓히기`, `Widen to ${fmtDist(+wider)}`) : tr("전체 보기", "Show all"), onClick: () => setRadius(wider) } : null);
+}
+function showState(icon, lines, btn) {
+  $("list").innerHTML = `<div class="state"><div class="icon">${icon}</div>${lines.map(l => `<p>${l}</p>`).join("")}${btn ? `<button id="stateBtn">${btn.label}</button>` : ""}</div>`;
+  if (btn) $("stateBtn").onclick = btn.onClick;
+}
+
+/* 길찾기·거리뷰: API 키 없는 공개 링크라 비용이 들지 않는다. */
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+function actionButtons(r) {
+  const dest = encodeURIComponent(r.name), o = state.origin;
+  const a = (href, label, cls = "") => `<a class="${cls}" target="_blank" rel="noopener" href="${href}">${label}</a>`;
+  const b = (act, label, cls = "") => `<button type="button" class="${cls}" data-act="${act}" data-id="${r.id}">${label}</button>`;
+  const google = `https://www.google.com/maps/dir/?api=1${o ? `&origin=${o.lat},${o.lon}` : ""}&destination=${r.lat},${r.lon}&travelmode=walking`;
+  const naver = `nmap://route/walk?${o ? `slat=${o.lat}&slng=${o.lon}&sname=${encodeURIComponent(tr("내 위치", "Me"))}&` : ""}dlat=${r.lat}&dlng=${r.lon}&dname=${dest}&appname=${encodeURIComponent(location.origin)}`;
+  let out = r.photos?.length ? `<div class="photos">${r.photos.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="${esc(r.name)}" loading="lazy"></a>`).join("")}</div>` : "";
+  if (r.status === "pending") {
+    const btns = r.confirmed_by_me ? [`<span class="note">${r.mine ? tr("내가 올린 제보", "Your report") : tr("확인 완료", "Confirmed")} · ${tr(`${CONFIG.required - r.confirms}명 더 필요`, `${CONFIG.required - r.confirms} more needed`)}</span>`]
+                                   : [b("confirm", tr("나도 여기 확인했어요", "I've seen it too"), "btn-ok")];
+    btns.push(b("photo", tr("📷 사진", "📷 Photo")));
+    if (ME?.admin) btns.push(b("approve", "승인", "btn-ok"), b("reject", "거절", "btn-no"));
+    out += `<div class="link-group"><span>${tr("확인", "Verify")}</span>${btns.join("")}</div>`;
+  } else if (!DEMO) {
+    const btns = [b("favorite", r.favorite ? tr("★ 즐겨찾기 해제", "★ Unsave") : tr("☆ 즐겨찾기", "☆ Save")), b("still", tr("👍 아직 있어요", "👍 Still here")),
+                  b("issue", tr("정보가 달라요", "Report")), b("photo", tr("📷 사진", "📷 Photo"))];
+    if (ME?.admin) btns.push(b("edit", "수정"), b("hide", "숨기기", "btn-no"));
+    out += `<div class="link-group"><span>${tr("정보", "Info")}</span>${btns.join("")}</div>`;
+  }
+  return out + `
+    <div class="link-group"><span>${tr("길찾기", "Route")}</span>
+      ${a(`https://map.kakao.com/link/to/${dest},${r.lat},${r.lon}`, tr("카카오맵", "KakaoMap"), "main")}
+      ${IS_MOBILE ? `<a href="${naver}">${tr("네이버지도 앱", "Naver Map app")}</a>` : ""}
+      ${a(google, "Google Maps")}
+    </div>
+    <div class="link-group"><span>${tr("거리뷰", "Street")}</span>
+      ${a(`https://map.kakao.com/link/roadview/${r.lat},${r.lon}`, tr("카카오 로드뷰", "Kakao Roadview"))}
+      ${a(`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${r.lat},${r.lon}`, "Street View")}
+      <a href="#" data-copy="${esc(r.address || `${r.lat}, ${r.lon}`)}">${tr("좌표 복사", "Copy")}</a>
+    </div>`;
+}
+function select(i, fromMap) {
+  state.selected = state.selected === i && !fromMap ? -1 : i;
+  renderList(); drawMap();
+  const r = state.results[i];
+  if (map && r && state.selected === i) { map.setView([r.lat, r.lon], Math.max(map.getZoom(), 17)); nudgeForSheet(); }
+  if (fromMap) { setExpanded(true); document.querySelector(`.item[data-i="${i}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+}
+$("list").addEventListener("click", e => {
+  const copy = e.target.closest("[data-copy]");
+  if (copy) { e.preventDefault(); navigator.clipboard?.writeText(copy.dataset.copy).then(() => toast(tr("복사했습니다", "Copied")), () => toast(tr("복사하지 못했습니다", "Could not copy"))); return; }
+  const act = e.target.closest("[data-act]");
+  if (act) return placeAction(+act.dataset.id, act.dataset.act);
+  if (e.target.closest("a")) return;
+  const item = e.target.closest(".item");
+  if (item && !e.target.closest(".actions")) select(+item.dataset.i, false);
+});
+$("list").addEventListener("keydown", e => {
+  const item = e.target.closest(".item");
+  if (item && e.target === item && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(+item.dataset.i, false); }
+});
+
+/* ---------- 흡연장 작업 ---------- */
+async function placeAction(id, act) {
+  const p = PLACES.find(x => x.id === id);
+  if (!p) return;
+  if (!ME) { toast(tr("로그인이 필요합니다", "Please log in")); return openLogin(); }
+  if (act === "issue") return openIssue(p);
+  if (act === "edit") return openForm("edit", p);
+  if (act === "photo") { state.photoId = id; $("photoInput").value = ""; return $("photoInput").click(); }
+  let path, body = {}, done;
+  if (act === "confirm") { path = `/api/places/${id}/confirm`; done = d => d.status === "active" ? tr(`확인 ${d.confirms}명이 모여 공개됐어요`, `Published after ${d.confirms} confirmations`) : tr(`확인했어요 (${d.confirms}/${d.required})`, `Confirmed (${d.confirms}/${d.required})`); }
+  else if (act === "favorite") { path = `/api/places/${id}/favorite`; done = d => d.favorite ? tr("즐겨찾기에 추가했어요", "Saved") : tr("즐겨찾기에서 뺐어요", "Removed from saved"); }
+  else if (act === "still") { path = `/api/places/${id}/issue`; body = { kind: "still_here" }; done = () => tr("확인 날짜를 오늘로 갱신했어요. 고마워요!", "Marked as checked today. Thanks!"); }
+  else if (["approve", "reject", "hide"].includes(act)) {
+    if (act !== "approve" && !confirm(act === "reject" ? "이 제보를 거절할까요?" : "이 흡연장을 숨길까요? (관리자 화면에서 되돌릴 수 있어요)")) return;
+    path = `/api/admin/places/${id}`; body = { action: act }; done = () => ({ approve: "승인했습니다", reject: "거절했습니다", hide: "숨겼습니다" })[act];
+  } else return;
+  const { data } = await api(path, body).catch(() => ({ data: { error: tr("서버에 연결할 수 없습니다", "Cannot reach the server") } }));
+  if (!data.ok) return data.error && toast(data.error);
+  toast(done(data));
+  await loadPlaces(); refreshAdminBadge();
+}
+
+/* 사진: 기기에서 크기를 줄이고 다시 저장해 EXIF(촬영 위치 등)를 지운 뒤 보낸다. 서버에서도 한 번 더 지운다. */
+$("photoInput").addEventListener("change", async () => {
+  const file = $("photoInput").files[0];
+  if (!file || !state.photoId) return;
+  try {
+    toast(tr("사진을 올리는 중…", "Uploading photo…"));
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" }).catch(() => null);
+    const img = bmp || await new Promise((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = no; im.src = URL.createObjectURL(file); });
+    const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    const { data } = await api(`/api/places/${state.photoId}/photo`, { image: cv.toDataURL("image/jpeg", 0.82) });
+    if (!data.ok) return toast(data.error || tr("사진을 올리지 못했습니다", "Upload failed"));
+    toast(data.status === "approved" ? tr("사진을 올렸습니다", "Photo added") : tr("사진을 보냈어요. 관리자 확인 후 공개돼요", "Photo sent — visible after review"));
+    await loadPlaces(); refreshAdminBadge();
+  } catch { toast(tr("이 사진은 올릴 수 없어요", "This image cannot be uploaded")); }
+});
+
+function openIssue(p) {
+  state.issueId = p.id;
+  $("issuePlace").textContent = p.name;
+  $("issueKind").value = "gone"; $("issueMemo").value = ""; $("issueErr").textContent = "";
+  $("issueDlg").showModal();
+}
+$("issueSend").onclick = async () => {
+  const { data } = await api(`/api/places/${state.issueId}/issue`, { kind: $("issueKind").value, memo: $("issueMemo").value })
+    .catch(() => ({ data: { error: tr("서버에 연결할 수 없습니다", "Cannot reach the server") } }));
+  if (!data.ok) return $("issueErr").textContent = data.error || "";
+  $("issueDlg").close();
+  toast(data.hidden ? tr(`신고가 ${data.count}명 모여 목록에서 숨겼어요`, `Hidden after ${data.count} reports`) : tr("신고를 보냈어요. 관리자가 확인할게요", "Report sent. An admin will check it."));
+  await loadPlaces(); refreshAdminBadge();
+};
+
+/* ---------- 문의 ---------- */
+function openFeedback() {
+  $("fbMsg").value = ""; $("fbContact").value = ""; $("fbErr").textContent = ""; $("fbCat").value = "bug";
+  if ($("userDlg").open) $("userDlg").close();
+  $("feedbackDlg").showModal();
+}
+$("feedbackLink").onclick = openFeedback;
+$("feedbackFromUser").onclick = openFeedback;
+$("fbSend").onclick = async () => {
+  const msg = $("fbMsg").value.trim();
+  if (msg.length < 5) return $("fbErr").textContent = tr("내용을 5자 이상 적어 주세요.", "Please write at least 5 characters.");
+  const { data } = await api("/api/feedback", { category: $("fbCat").value, message: msg, contact: $("fbContact").value })
+    .catch(() => ({ data: { error: tr("서버에 연결할 수 없습니다", "Cannot reach the server") } }));
+  if (!data.ok) return $("fbErr").textContent = data.error || "";
+  $("feedbackDlg").close(); toast(tr("보내 주셔서 고마워요!", "Thanks for your message!")); refreshAdminBadge();
+};
+
+/* ---------- 위치 ---------- */
+// 안드로이드 앱 안에서는 앱이 GPS를 직접 읽어 window.onNativeLocation 으로 돌려준다.
+let nativeCb = null;
+window.onNativeLocation = (lat, lon) => { $("locate").classList.remove("busy"); nativeCb?.ok(lat, lon); nativeCb = null; };
+window.onNativeLocationError = msg => { $("locate").classList.remove("busy"); nativeCb?.fail(msg || tr("위치를 가져오지 못했습니다.", "Could not get your location.")); nativeCb = null; };
+function getPosition(ok, fail) {
+  $("locate").classList.add("busy");
+  if (APP?.requestLocation) { nativeCb = { ok, fail }; APP.requestLocation(); return; }
+  if (!navigator.geolocation) { $("locate").classList.remove("busy"); return fail(tr("이 브라우저는 위치 기능을 지원하지 않습니다.", "This browser does not support location.")); }
+  navigator.geolocation.getCurrentPosition(
+    pos => { $("locate").classList.remove("busy"); ok(pos.coords.latitude, pos.coords.longitude); },
+    err => { $("locate").classList.remove("busy"); fail(err.code === 1 ? tr("위치 권한이 거부되었습니다.", "Location permission was denied.") : tr("위치를 가져오지 못했습니다.", "Could not get your location.")); },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+}
+function locate() {
+  getPosition((la, lo) => setOrigin(la, lo, tr("현재 위치 기준으로 찾았어요", "Showing places near you")), msg => {
+    toast(msg);
+    if (!state.origin) showState("📍", [msg, tr("지도를 눌러 위치를 정하거나 좌표를 직접 입력하세요.", "Tap the map or enter coordinates instead.")],
+      { label: tr("천안시청 기준으로 보기", "Use Cheonan City Hall"), onClick: () => setOrigin(...CHEONAN_HALL, tr("천안시청 기준", "Near Cheonan City Hall")) });
+  });
+}
+$("locate").onclick = () => state.mode ? getPosition((la, lo) => setDraft(la, lo, true), toast) : locate();
+function setOrigin(lat, lon, label) {
+  state.origin = { lat, lon };
+  $("lat").value = lat.toFixed(6); $("lon").value = lon.toFixed(6);
+  if (label) toast(label);
+  if (DEMO) PLACES = demoPlaces(state.origin);
+  state.selected = -1;
+  refresh(true);
+}
+function setRadius(r) {
+  state.radius = r;
+  document.querySelectorAll(".chip[data-r]").forEach(c => c.setAttribute("aria-pressed", c.dataset.r === r));
+  refresh(true);
+}
+document.querySelectorAll(".chip[data-r]").forEach(c => c.onclick = () => setRadius(c.dataset.r));
+$("candChip").onclick = () => {
+  state.candidates = !state.candidates; $("candChip").setAttribute("aria-pressed", state.candidates);
+  toast(state.candidates ? tr("미확인 후보도 표시합니다 (실제 흡연장이 아닐 수 있음)", "Showing unverified places (may not be real)") : tr("확인된 곳만 표시합니다", "Showing verified places only"));
+  refresh(true);
+};
+$("favChip").onclick = () => {
+  if (!ME) { toast(tr("즐겨찾기는 로그인 후 쓸 수 있어요", "Log in to use saved places")); return openLogin(); }
+  state.favOnly = !state.favOnly; $("favChip").setAttribute("aria-pressed", state.favOnly); refresh(true);
+};
+let qTimer;
+$("q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.query = $("q").value; state.selected = -1; refresh(true); }, 200); });
+
+/* ---------- 추가·수정 ---------- */
+function setDraft(lat, lon, pan) {
+  state.draft = { lat, lon };
+  $("addLat").value = lat.toFixed(6); $("addLon").value = lon.toFixed(6);
+  $("addHint").textContent = tr("위치를 정했어요. 정확하지 않으면 핀을 끌거나 지도를 다시 눌러 주세요.", "Location set. Drag the pin or tap again to adjust.");
+  $("addHint").classList.add("set"); $("addErr").textContent = "";
+  if (!map) return;
+  if (!draftMarker) {
+    draftMarker = L.marker([lat, lon], { draggable: true, zIndexOffset: 2000,
+      icon: L.divIcon({ className: "", html: '<div class="pin draft"><b>＋</b></div>', iconSize: [34, 34], iconAnchor: [17, 34] }) }).addTo(map);
+    draftMarker.on("dragend", e => { const p = e.target.getLatLng(); setDraft(p.lat, p.lng); });
+  } else draftMarker.setLatLng([lat, lon]);
+  if (pan) map.setView([lat, lon], Math.max(map.getZoom(), 18));
+}
+function openForm(mode, p) {
+  state.mode = mode; state.editId = p?.id ?? null; document.body.classList.add("adding");
+  $("searchView").style.display = "none"; $("addView").hidden = false; $("addBtn").hidden = true; setExpanded(true);
+  $("addTitle").textContent = mode === "edit" ? "흡연장 수정" : tr("흡연장 추가", "Add a smoking area");
+  $("addSubmit").textContent = mode === "edit" ? "저장" : tr("등록", "Submit");
+  $("addName").value = p?.name || ""; $("addMemo").value = p?.note || "";
+  $("addRoof").value = p?.roof || ""; $("addAsh").value = p?.ashtray || ""; $("addSet").value = p?.setting || "";
+  $("addLat").value = ""; $("addLon").value = ""; $("addErr").textContent = ""; state.draft = null;
+  $("addHint").textContent = tr("지도에서 흡연장 위치를 눌러 주세요. 핀을 끌어서 옮길 수 있어요.", "Tap the map where the smoking area is. You can drag the pin.");
+  $("addHint").classList.remove("set");
+  $("addRule").innerHTML = mode === "edit" ? "관리자 수정은 바로 반영되고, 확인 날짜가 오늘로 바뀝니다."
+    : ME?.admin ? "관리자가 등록한 곳은 바로 공개됩니다."
+    : tr(`등록한 곳은 <b>확인 중</b> 상태가 됩니다. 다른 이용자 ${CONFIG.required - 1}명이 더 확인하거나 관리자가 승인하면 모두에게 공개돼요. 실제로 본 곳만 올려 주세요.`,
+         `New places start as <b>pending</b> and go public after ${CONFIG.required - 1} more people confirm them or an admin approves. Only add places you have actually seen.`);
+  drawMap();
+  if (p) setDraft(p.lat, p.lon, true); else if (map) map.setZoom(Math.max(map.getZoom(), 17));
+  $("addName").focus();
+}
+function closeForm() {
+  state.mode = null; state.editId = null; document.body.classList.remove("adding");
+  $("searchView").style.display = "contents"; $("addView").hidden = true; $("addBtn").hidden = false;
+  if (draftMarker) { map.removeLayer(draftMarker); draftMarker = null; }
+  setExpanded(false); drawMap();
+}
+$("addBtn").onclick = () => {
+  if (DEMO) return toast(tr("예시 화면에서는 추가할 수 없습니다", "Adding is disabled in demo mode"));
+  if (!ME) { toast(tr("흡연장을 추가하려면 로그인하세요", "Log in to add a place")); return openLogin(); }
+  if (ME.banned) return toast(tr("이용이 제한된 계정입니다", "Your account is restricted"));
+  openForm("add");
+};
+$("addCancel").onclick = $("addCancelTop").onclick = closeForm;
+$("addHere").onclick = () => getPosition((la, lo) => setDraft(la, lo, true), msg => { $("addErr").textContent = msg; });
+["addLat", "addLon"].forEach(id => $(id).addEventListener("change", () => {
+  const la = parseFloat($("addLat").value), lo = parseFloat($("addLon").value);
+  if (!isNaN(la) && !isNaN(lo)) setDraft(la, lo, true);
+}));
+async function submitForm(force) {
+  const body = { name: $("addName").value.trim(), memo: $("addMemo").value.trim(), roof: $("addRoof").value, ashtray: $("addAsh").value,
+                 setting: $("addSet").value, lat: parseFloat($("addLat").value), lon: parseFloat($("addLon").value), force: !!force };
+  if (body.name.length < 2) return $("addErr").textContent = tr("이름을 2자 이상 입력하세요.", "Name must be at least 2 characters.");
+  if (isNaN(body.lat) || isNaN(body.lon)) return $("addErr").textContent = tr("지도를 눌러 위치를 정해 주세요.", "Tap the map to set the location.");
+  $("addSubmit").disabled = true; $("addErr").textContent = "";
+  try {
+    const editing = state.mode === "edit";
+    const { res, data } = await api(editing ? `/api/admin/places/${state.editId}` : "/api/places", editing ? { ...body, action: "edit" } : body);
+    if (res.status === 409 && data.duplicate) {
+      if (confirm(`${data.error}\n${tr("같은 곳이 아니라면 그래도 등록할까요?", "Submit anyway if it is a different place?")}`)) return submitForm(true);
+      return;
+    }
+    if (res.status === 401) { closeForm(); return; }
+    if (!data.ok) return $("addErr").textContent = data.error || tr("저장하지 못했습니다.", "Could not save.");
+    if (editing) toast("수정했습니다");
+    else if (data.status === "active") toast(data.merged ? tr(`확인 ${data.confirms}명이 모여 '${data.name}'이(가) 공개됐어요`, `'${data.name}' is now public`) : tr(`'${body.name}'을(를) 등록했습니다`, `Added '${body.name}'`));
+    else if (data.merged) toast(tr(`이미 올라온 '${data.name}'에 확인을 더했어요 (${data.confirms}/${data.required})`, `Added your confirmation to '${data.name}' (${data.confirms}/${data.required})`));
+    else toast(tr(`등록 요청 완료 (${data.confirms}/${data.required}) · 확인이 더 모이거나 관리자가 승인하면 공개돼요`, `Submitted (${data.confirms}/${data.required}) — public after more confirmations or admin approval`));
+    closeForm(); await loadPlaces(); refreshAdminBadge();
+    if (!state.origin) setOrigin(body.lat, body.lon);
+  } catch { $("addErr").textContent = tr("서버에 연결할 수 없습니다.", "Cannot reach the server."); }
+  finally { $("addSubmit").disabled = false; }
+}
+$("addView").onsubmit = e => { e.preventDefault(); submitForm(false); };
+
+/* ---------- 로그인·계정 ---------- */
+const PROVIDER_CLASS = { google: "p-google", naver: "p-naver", kakao: "p-kakao" };
+async function openLogin() {
+  if ($("loginDlg").open) return;
+  try {
+    const { data: d } = await api("/auth/providers");
+    const names = { google: tr("구글", "Google"), naver: tr("네이버", "Naver"), kakao: tr("카카오", "Kakao") };
+    const btns = d.providers.map(p => p.enabled
+      ? `<a class="${PROVIDER_CLASS[p.id]}" href="/auth/${p.id}/login">${tr(`${names[p.id]}로 계속하기`, `Continue with ${names[p.id]}`)}</a>`
+      : `<a class="${PROVIDER_CLASS[p.id]} p-off" aria-disabled="true">${tr(`${names[p.id]}로 계속하기 (준비 중)`, `Continue with ${names[p.id]} (coming soon)`)}</a>`);
+    if (d.dev) btns.push(`<a class="p-dev" href="/auth/dev/login?name=${encodeURIComponent("테스터" + Math.floor(Math.random() * 900 + 100))}">개발용 로그인 (일반 사용자)</a>`);
+    $("providerBtns").innerHTML = btns.join("");
+    const off = d.providers.filter(p => !p.enabled).map(p => names[p.id]);
+    $("providerNote").textContent = off.length ? tr(`${off.join(", ")} 로그인은 아직 준비 중입니다.`, `${off.join(", ")} login is not available yet.`) : "";
+  } catch { $("providerBtns").innerHTML = `<p class="muted">${tr("서버에 연결할 수 없습니다.", "Cannot reach the server.")}</p>`; }
+  $("loginDlg").showModal();
+}
+async function devLogin() {
+  const id = $("devId").value.trim(), password = $("devPw").value;
+  if (!id || !password) return $("devErr").textContent = tr("아이디와 비밀번호를 입력하세요.", "Enter ID and password.");
+  $("devLoginBtn").disabled = true; $("devErr").textContent = "";
+  try {
+    const { data } = await api("/auth/local/login", { id, password });
+    if (!data.ok) return $("devErr").textContent = data.error;
+    $("devPw").value = ""; $("loginDlg").close();
+    await afterLogin(tr(`${ME.name}님, 관리자로 로그인했습니다`, `Logged in as admin ${ME.name}`));
+  } catch { $("devErr").textContent = tr("서버에 연결할 수 없습니다.", "Cannot reach the server."); }
+  finally { $("devLoginBtn").disabled = false; }
+}
+$("devLoginBtn").onclick = devLogin;
+$("devPw").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); devLogin(); } });
+let adminCount = 0;
+function updateUserBtn() {
+  const btn = $("userBtn");
+  if (!ME) { btn.textContent = tr("로그인", "Log in"); return; }
+  btn.innerHTML = esc((ME.admin ? "👑 " : "") + ME.name) + (ME.admin && adminCount ? `<span class="count" aria-label="처리할 일 ${adminCount}건">${adminCount}</span>` : "");
+}
+async function refreshAdminBadge() {
+  if (!ME?.admin) { adminCount = 0; return updateUserBtn(); }
+  try { const { data } = await api("/api/admin/summary"); adminCount = data.ok ? data.total : 0; } catch {}
+  updateUserBtn();
+}
+setInterval(refreshAdminBadge, 60000);
+async function loadMe() {
+  try { ME = (await api("/api/me")).data.user; } catch { ME = null; }
+  updateUserBtn(); refreshAdminBadge();
+}
+async function afterLogin(msg) { await loadMe(); if (msg) toast(msg); await loadPlaces(); }
+$("userBtn").onclick = () => {
+  if (!ME) return openLogin();
+  $("userTitle").textContent = ME.name;
+  $("userSub").textContent = `${PROVIDER_LABEL[ME.provider] || ME.provider}${ME.admin ? tr(" · 관리자", " · Admin") : ""}${ME.banned ? tr(" · 이용 제한됨", " · Restricted") : ""} · ${tr("가입", "Joined")} ${ME.created_at?.slice(0, 10) || ""}`;
+  $("openAdmin").hidden = !ME.admin;
+  $("openAdmin").textContent = adminCount ? `👑 관리자 화면 (처리할 일 ${adminCount}건)` : "👑 관리자 화면";
+  $("userDlg").showModal();
+};
+$("logoutBtn").onclick = async () => {
+  await api("/auth/logout", {}).catch(() => {});
+  $("userDlg").close(); state.favOnly = false; $("favChip").setAttribute("aria-pressed", false);
+  await afterLogin(tr("로그아웃했습니다", "Logged out"));
+};
+$("deleteBtn").onclick = async () => {
+  if (!confirm(tr("정말 탈퇴할까요?\n회원 정보와 즐겨찾기는 바로 삭제됩니다. 올린 제보·사진·확인 기록은 누가 했는지 알 수 없게 바꾼 뒤 남습니다.",
+                  "Delete your account?\nYour profile and saved places are deleted now. Your reports, photos and confirmations stay, but anonymized."))) return;
+  if (!confirm(tr("탈퇴하면 되돌릴 수 없습니다. 계속할까요?", "This cannot be undone. Continue?"))) return;
+  const { data } = await api("/api/me/delete", {}).catch(() => ({ data: {} }));
+  if (!data.ok) return toast(data.error || tr("탈퇴하지 못했습니다", "Could not delete the account"));
+  $("userDlg").close(); await afterLogin(tr("탈퇴했습니다. 그동안 이용해 주셔서 고마워요", "Account deleted. Thank you for using the service."));
+};
+
+/* ---------- 관리자 화면 (한국어 전용) ---------- */
+let adminTab = "pending", adminData = null;
+$("openAdmin").onclick = async () => { $("userDlg").close(); await loadAdmin(); $("adminDlg").showModal(); };
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  adminTab = t.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
+  renderAdmin();
+});
+async function loadAdmin() {
+  const { data } = await api("/api/admin/queue").catch(() => ({ data: {} }));
+  adminData = data.ok ? data : null;
+  const counts = adminData ? { pending: data.pending.length, issues: data.issues.length, hidden: data.hidden.length, photos: data.photos.length, feedback: data.feedback.length } : {};
+  document.querySelectorAll(".tab").forEach(t => {
+    const base = t.textContent.replace(/ \(\d+\)$/, "");
+    t.textContent = counts[t.dataset.tab] ? `${base} (${counts[t.dataset.tab]})` : base;
+  });
+  renderAdmin();
+}
+function renderAdmin() {
+  const box = $("adminList"), d = adminData;
+  if (!d) return box.innerHTML = '<p class="muted">불러오지 못했습니다.</p>';
+  const rv = (lat, lon) => `<a target="_blank" rel="noopener" href="https://map.kakao.com/link/roadview/${lat},${lon}">로드뷰</a>`;
+  const empty = msg => `<p class="muted">${msg}</p>`;
+  const B = (attrs, label, cls) => `<button type="button" class="${cls}" ${attrs}>${label}</button>`;
+  if (adminTab === "pending") box.innerHTML = d.pending.length ? d.pending.map(p => `
+    <div class="card"><b>${esc(p.name)}</b> <span class="badge pending">${p.confirms}/${d.required}</span>
+      <div class="muted small">${esc(p.note) || "메모 없음"} · ${esc(p.by_name || "탈퇴 회원")} · ${esc(p.created_at)}</div>
+      <div class="muted small">${p.lat.toFixed(5)}, ${p.lon.toFixed(5)} · ${rv(p.lat, p.lon)}</div>
+      <div class="row">${B(`data-p="${p.id}" data-a="approve"`, "승인", "btn-ok")}${B(`data-p="${p.id}" data-a="reject"`, "거절", "btn-no")}</div></div>`).join("") : empty("승인 대기 중인 제보가 없습니다.");
+  else if (adminTab === "issues") box.innerHTML = d.issues.length ? d.issues.map(i => `
+    <div class="card"><b>${esc(i.name)}</b> <span class="badge pending">${ISSUE_LABEL[i.kind] || esc(i.kind)} ${i.same}명</span>${i.place_status === "hidden" ? ' <span class="badge synthetic">자동 숨김됨</span>' : ""}
+      <div class="muted small">${esc(i.memo) || "내용 없음"} · ${esc(i.by_name || "탈퇴 회원")} · ${esc(i.created_at)}</div>
+      <div class="muted small">${i.lat.toFixed(5)}, ${i.lon.toFixed(5)} · ${rv(i.lat, i.lon)}</div>
+      <div class="row">${B(`data-i="${i.id}" data-hide="1"`, "맞아요 · 숨기기", "btn-no")}${B(`data-i="${i.id}" data-hide="0"`, "문제없음 · 닫기", "btn-sub")}
+        ${i.place_status === "hidden" ? B(`data-p="${i.place_id}" data-a="restore"`, "다시 공개", "btn-ok") : ""}</div></div>`).join("") : empty("처리할 신고가 없습니다.");
+  else if (adminTab === "photos") box.innerHTML = d.photos.length ? d.photos.map(ph => `
+    <div class="card"><b>${esc(ph.name)}</b><div class="muted small">${esc(ph.by_name || "탈퇴 회원")} · ${esc(ph.created_at)}</div>
+      <img src="/photos/${esc(ph.file)}" alt="검토할 사진">
+      <p class="muted small">사람 얼굴·차량 번호판 등 개인정보가 보이면 삭제하세요.</p>
+      <div class="row">${B(`data-ph="${ph.id}" data-a="approve"`, "공개", "btn-ok")}${B(`data-ph="${ph.id}" data-a="delete"`, "삭제", "btn-no")}</div></div>`).join("") : empty("검토할 사진이 없습니다.");
+  else if (adminTab === "feedback") box.innerHTML = d.feedback.length ? d.feedback.map(f => `
+    <div class="card"><b>${FB_LABEL[f.category] || esc(f.category)}</b> <span class="muted small">${esc(f.by_name || "비회원")} · ${esc(f.created_at)}</span>
+      <p class="msg">${esc(f.message)}</p>
+      ${f.contact ? `<div class="muted small">답변 연락처: ${esc(f.contact)}</div>` : ""}
+      <div class="row">${B(`data-fb="${f.id}"`, "처리 완료", "btn-sub")}</div></div>`).join("") : empty("새 문의가 없습니다.");
+  else if (adminTab === "hidden") box.innerHTML = d.hidden.length ? d.hidden.map(p => `
+    <div class="card"><b>${esc(p.name)}</b><div class="muted small">${esc(p.note)} · ${rv(p.lat, p.lon)}</div>
+      <div class="row">${B(`data-p="${p.id}" data-a="restore"`, "다시 공개", "btn-ok")}${B(`data-p="${p.id}" data-a="delete"`, "완전히 삭제", "btn-no")}</div></div>`).join("") : empty("숨긴 흡연장이 없습니다.");
+  else if (adminTab === "users") box.innerHTML = d.users.map(u => `
+    <div class="card"><b>${esc(u.name)}</b> <span class="muted small">${esc(u.provider_label)}${u.admin ? " · 관리자" : ""} · 제보 ${u.reports}건</span>
+      ${u.banned ? ' <span class="badge pending">이용 제한</span>' : ""}
+      <div class="muted small">가입 ${esc(u.created_at || "")} · 최근 ${esc(u.last_login || "")}</div>
+      ${u.admin ? "" : `<div class="row">${B(`data-u="${esc(u.id)}" data-ban="${u.banned ? 0 : 1}"`, u.banned ? "제한 풀기" : "이용 제한", u.banned ? "btn-sub" : "btn-no")}</div>`}</div>`).join("") || empty("회원이 없습니다.");
+  else box.innerHTML = d.log.map(l => `<div class="log-line">${esc(l.at)} · ${esc(l.action)} · #${esc(l.target)} ${esc(l.detail)}</div>`).join("") || empty("기록이 없습니다.");
+}
+$("adminList").addEventListener("click", async e => {
+  const t = e.target.closest("button");
+  if (!t) return;
+  let req;
+  if (t.dataset.p) {
+    if (t.dataset.a === "delete" && !confirm("완전히 삭제하면 되돌릴 수 없습니다. 삭제할까요?")) return;
+    if (t.dataset.a === "reject" && !confirm("이 제보를 거절할까요?")) return;
+    req = api(`/api/admin/places/${t.dataset.p}`, { action: t.dataset.a });
+  } else if (t.dataset.i) req = api(`/api/admin/issues/${t.dataset.i}/resolve`, { hide: t.dataset.hide === "1" });
+  else if (t.dataset.ph) {
+    if (t.dataset.a === "delete" && !confirm("이 사진을 삭제할까요?")) return;
+    req = api(`/api/admin/photos/${t.dataset.ph}`, { action: t.dataset.a });
+  } else if (t.dataset.fb) req = api(`/api/admin/feedback/${t.dataset.fb}/done`, {});
+  else if (t.dataset.u) {
+    if (t.dataset.ban === "1" && !confirm("이 회원의 제보·확인·신고를 막을까요?")) return;
+    req = api(`/api/admin/users/${encodeURIComponent(t.dataset.u)}/ban`, { banned: t.dataset.ban === "1" });
+  } else return;
+  const { data } = await req.catch(() => ({ data: { error: "서버에 연결할 수 없습니다" } }));
+  if (!data.ok) return toast(data.error || "처리하지 못했습니다");
+  toast("처리했습니다"); await loadAdmin(); await loadPlaces(); refreshAdminBadge();
+});
+
+/* ---------- 시트 / 기타 ---------- */
+function setExpanded(v) { state.expanded = v; document.documentElement.style.setProperty("--sheet-h", v ? "72vh" : "42vh"); }
+$("handle").onclick = () => setExpanded(!state.expanded);
+$("toggleManual").onclick = () => {
+  const open = $("manual").classList.toggle("open");
+  if (open) $("lat").focus();
+};
+$("manual").onsubmit = e => {
+  e.preventDefault();
+  const lat = parseFloat($("lat").value), lon = parseFloat($("lon").value);
+  if (isNaN(lat) || isNaN(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return toast(tr("위도·경도를 올바른 숫자로 입력하세요", "Enter valid latitude and longitude"));
+  setOrigin(lat, lon, tr("입력한 좌표 기준으로 찾았어요", "Showing places near those coordinates"));
+};
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+/* ---------- 데이터 ---------- */
+function demoPlaces(o) {   // ?demo=1 전용. 실제 흡연장 아님.
+  const offs = [[.0012, .0008], [-.0021, .0015], [.0035, -.0022], [-.0008, -.0041], [.0062, .0031], [-.0055, .0068], [.011, -.009], [-.016, .012]];
+  return offs.map(([dy, dx], i) => ({ id: -(i + 1), name: tr(`예시 흡연장 ${i + 1}`, `Demo place ${i + 1}`), lat: o.lat + dy, lon: o.lon + dx,
+    address: tr("예시 주소 (실제 장소 아님)", "Demo address (not real)"), note: "", source: "synthetic", status: "active",
+    roof: i % 2 ? "yes" : "", ashtray: "yes", setting: "outdoor", verified_at: "", favorite: false, photos: [] }));
+}
+function updatePill() {
+  const pill = $("dataPill");
+  if (DEMO) { pill.textContent = tr("예시 데이터", "Demo data"); pill.className = "pill demo"; return; }
+  if (!LOADED) return;
+  const n = PLACES.filter(p => p.status === "active" && p.source !== "candidate").length;
+  pill.textContent = n ? tr(`흡연장 ${n}곳`, `${n} places`) : tr("데이터 없음", "No data");
+  pill.className = "pill " + (n ? "ok" : "warn");
+}
+async function loadPlaces() {
+  if (DEMO) { LOADED = true; if (state.origin) PLACES = demoPlaces(state.origin); updatePill(); refresh(false); return; }
+  try {
+    const { res, data } = await api("/api/places");
+    if (!data.ok) {   // 목록을 못 받았을 때 '등록된 곳이 없다'고 잘못 안내하지 않는다
+      $("dataPill").textContent = tr("서버 확인 필요", "Server issue"); $("dataPill").className = "pill warn";
+      return showState("⚠️", [res.status === 404 ? tr("서버가 예전 버전으로 실행 중입니다.", "The server is running an old version.") : tr("흡연장 목록을 불러오지 못했습니다.", "Could not load the list."),
+        tr("서버를 껐다가(Ctrl+C) <code>python3 server.py</code>로 다시 켜 주세요. 데이터는 그대로 있어요.", "Restart the server. Your data is safe.")], { label: tr("다시 시도", "Retry"), onClick: loadPlaces });
+    }
+    PLACES = data.places; CONFIG.required = data.required; CONFIG.gone_required = data.gone_required; LOADED = true;
+  } catch { return showState("📡", [tr("서버에 연결할 수 없습니다.", "Cannot reach the server.")], { label: tr("다시 시도", "Retry"), onClick: loadPlaces }); }
+  updatePill(); refresh(false);
+}
+
+/* ---------- 시작 화면 ---------- */
+function leaveSplash(thenLocate) {
+  const s = $("splash");
+  if (s.classList.contains("leaving")) return;
+  s.classList.add("leaving");
+  try { sessionStorage.setItem("splashSeen", "1"); } catch {}
+  setTimeout(() => { s.hidden = true; map?.invalidateSize(); if (thenLocate) locate(); }, 450);
+}
+$("splashGo").onclick = () => leaveSplash(true);
+$("splashSkip").onclick = () => leaveSplash(false);
+
+/* ---------- 시작 ---------- */
+(async () => {
+  applyLang();
+  let seen = false;
+  try { seen = sessionStorage.getItem("splashSeen") === "1"; } catch {}
+  const params = new URLSearchParams(location.search);
+  if (seen || params.has("login_error")) $("splash").hidden = true; else $("splashGo").focus();
+  if (params.get("login_error")) { setTimeout(() => toast(params.get("login_error")), 300); history.replaceState(null, "", location.pathname + (DEMO ? "?demo=1" : "")); }
+  updatePill();
+  try { const { data } = await api("/api/config"); CONFIG = { ...CONFIG, ...data }; } catch {}
+  initMap(CONFIG.tiles || { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: "&copy; OpenStreetMap contributors" });
+  showState("", ['<span class="skeleton" style="display:block"></span>']);
+  await loadMe();
+  await loadPlaces();
+  if ("serviceWorker" in navigator && !APP) navigator.serviceWorker.register("/sw.js").catch(() => {});
+})();
+</script>
+</body>
+</html>

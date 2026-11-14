@@ -1,0 +1,47 @@
+plugins {
+    id "com.android.application"
+}
+
+// 출시용 서명 정보 (android/keystore.properties, 공유 금지). 없으면 출시용 빌드는 서명 없이 만들어진다.
+def keystoreProps = new Properties()
+def keystoreFile = rootProject.file("keystore.properties")
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProps.load(it) }
+
+android {
+    namespace "kr.cheonan.smokingfinder"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "kr.cheonan.smokingfinder"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+        buildConfigField "String", "SERVER_URL", "\"${project.findProperty('serverUrl') ?: 'http://10.0.2.2:9090'}\""
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreProps["storeFile"]) {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (keystoreProps["storeFile"]) signingConfig signingConfigs.release
+        }
+    }
+
+    buildFeatures { buildConfig true }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -1,0 +1,29 @@
+# Caddy: HTTPS 인증서를 자동으로 받고, 바깥(443)의 요청을 흡연장 서버(127.0.0.1:9090)로 넘긴다.
+# 설치 (Ubuntu): https://caddyserver.com/docs/install#debian-ubuntu-raspbian
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile && sudo nano /etc/caddy/Caddyfile   # 도메인 바꾸기
+#   sudo systemctl reload caddy
+smoke.example.com {
+	encode gzip
+	request_body {
+		max_size 4MB        # 사진 업로드 여유
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:9090
+	log {
+		output file /var/log/caddy/smoke.log
+		format filter {
+			wrap console
+			fields {
+				request>uri query {
+					delete              # 주소의 ? 뒤(검색 조건)는 기록하지 않는다
+				}
+				request>remote_ip delete
+				request>client_ip delete
+			}
+		}
+	}
+}

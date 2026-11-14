@@ -1,0 +1,23 @@
+{
+  "_설명": "config.json 으로 복사해서 키를 넣으세요(공유 금지). 카카오 client_id=REST API 키, client_secret은 보안 기능을 켠 경우만. admins=관리자 이메일 또는 'kakao:회원번호' 형식. tiles=공개 시 바꿀 지도 그림 주소. notify.webhook_url=새 제보·신고·사진·문의·서버 오류를 알릴 디스코드/슬랙 웹훅 주소(선택)",
+  "google": {
+    "client_id": "",
+    "client_secret": ""
+  },
+  "naver": {
+    "client_id": "",
+    "client_secret": ""
+  },
+  "kakao": {
+    "client_id": "",
+    "client_secret": ""
+  },
+  "admins": [],
+  "tiles": {
+    "url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    "attribution": "&copy; OpenStreetMap contributors"
+  },
+  "notify": {
+    "webhook_url": ""
+  }
+}

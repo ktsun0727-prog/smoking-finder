@@ -1,0 +1,14 @@
+{
+  "name": "천안 흡연장 찾기",
+  "short_name": "흡연장 찾기",
+  "description": "천안시 흡연구역을 내 위치에서 가까운 순으로 찾아 주는 서비스",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffe600",
+  "theme_color": "#ffe600",
+  "lang": "ko",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
