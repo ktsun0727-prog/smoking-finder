@@ -19,6 +19,7 @@ DATA = os.environ.get("SMOKING_DATA_DIR") or os.path.join(BASE, "data")
 DB_PATH = os.path.join(DATA, "app.db")
 BACKUP_DIR = os.path.join(DATA, "backups")
 PHOTO_DIR = os.path.join(DATA, "photos")
+SEED = os.path.join(BASE, "seed", "places.csv")   # GitHub 에 함께 올리는 초기 흡연장 목록 (개인정보 없음)
 KEEP_BACKUPS = 14
 
 SCHEMA = """
@@ -100,6 +101,9 @@ def init():
             moved = migrate_legacy(c)
             if moved:
                 print(f"[DB] 예전 파일 {len(moved)}개를 app.db 로 옮겼습니다: {', '.join(moved)}")
+            elif os.path.exists(SEED):
+                n = import_seed(c, SEED)
+                print(f"[DB] 새 데이터베이스에 초기 흡연장 {n}곳을 넣었습니다 ({os.path.basename(SEED)})")
     if first:
         legacy = os.path.join(DATA, "legacy_files")
         for name in ("smoking_areas.csv", "user_reports.csv", "candidates.csv", "pending.json", "users.json"):
@@ -125,6 +129,26 @@ def import_csv(c, path, source, status="active", actor="import"):
                   ((r.get(name_c) or "이름 없음").strip(), lat, lon, (r.get(addr_c) or "") if addr_c else "",
                    (r.get(note_c) or "") if note_c else "", source, status, actor, now(),
                    (r.get(date_c) or "") if date_c else "", "가져오기"))
+        n += 1
+    return n
+
+
+def import_seed(c, path):
+    """seed/places.csv: manage.py export 형식. '구분' 열(admin/user/candidate)대로 넣는다."""
+    rows, fields, _ = read_rows(path)
+    n = 0
+    for r in rows:
+        try:
+            lat, lon = float(r["위도"]), float(r["경도"])
+        except (KeyError, ValueError):
+            continue
+        source = (r.get("구분") or "admin").strip()
+        if source not in ("admin", "user", "candidate"):
+            continue                                   # 가상(synthetic) 데이터는 넣지 않는다
+        c.execute("""INSERT INTO places(name, lat, lon, address, note, source, status, roof, ashtray, setting,
+                     created_by, created_at, verified_at, approved_how) VALUES (?,?,?,?,?,?, 'active', ?,?,?, 'seed', ?, ?, '초기 데이터')""",
+                  (r.get("이름", "이름 없음"), lat, lon, r.get("주소", ""), r.get("출처", ""), source,
+                   r.get("지붕", ""), r.get("재떨이", ""), r.get("형태", ""), now(), r.get("확인일", "")))
         n += 1
     return n
 

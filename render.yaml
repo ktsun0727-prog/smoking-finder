@@ -1,0 +1,37 @@
+# Render 블루프린트: Render 대시보드 → New → Blueprint → 이 저장소 선택하면 아래대로 서비스가 만들어진다.
+# sync: false 인 값은 Render 화면에서 직접 입력한다 (GitHub에 값이 올라가지 않음).
+services:
+  - type: web
+    name: smoking-finder
+    runtime: python
+    plan: free
+    buildCommand: echo "설치할 패키지 없음 (파이썬 표준 라이브러리만 사용)"
+    startCommand: python3 server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: SESSION_SECRET          # 로그인 쿠키 서명 키 — Render 가 무작위로 만들어 준다
+        generateValue: true
+      - key: ADMIN_LOGIN_ID          # 개발자(관리자) 로그인 아이디
+        sync: false
+      - key: ADMIN_PASSWORD_HASH     # python3 manage.py hash-password 로 만든 값 (비밀번호 원문 아님)
+        sync: false
+      - key: ADMIN_EMAILS            # 관리자로 볼 소셜 로그인 이메일 (쉼표로 여러 개)
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: NOTIFY_WEBHOOK_URL      # (선택) 디스코드/슬랙 알림
+        sync: false
+    # ── 데이터를 계속 보관하려면 (유료: Starter 플랜 + 디스크) ──
+    # 무료 플랜은 재배포·재시작 때마다 data/ 가 지워져 제보·회원·사진이 사라진다.
+    # 아래 주석을 풀고 plan 을 starter 로 바꾸면 /var/data 에 영구 저장된다.
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1
+    # 그리고 envVars 에 추가:  - key: SMOKING_DATA_DIR / value: /var/data

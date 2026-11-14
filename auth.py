@@ -58,6 +58,44 @@ def hash_password(password, salt):
     return hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PBKDF2_ROUNDS).hex()
 
 
+def config_from_env(cfg):
+    """환경변수가 있으면 config.json 값보다 우선한다 (Render 같은 배포 환경용)."""
+    env = os.environ.get
+    for p in ("google", "naver", "kakao"):
+        cid, sec = env(f"{p.upper()}_CLIENT_ID"), env(f"{p.upper()}_CLIENT_SECRET")
+        if cid or sec:
+            c = cfg.setdefault(p, {})
+            if cid:
+                c["client_id"] = cid.strip()
+            if sec:
+                c["client_secret"] = sec.strip()
+    if env("ADMIN_EMAILS"):
+        cfg["admins"] = [a.strip() for a in env("ADMIN_EMAILS").split(",") if a.strip()]
+    if env("NOTIFY_WEBHOOK_URL"):
+        cfg.setdefault("notify", {})["webhook_url"] = env("NOTIFY_WEBHOOK_URL").strip()
+    if env("TILES_URL"):
+        cfg.setdefault("tiles", {})["url"] = env("TILES_URL").strip()
+        if env("TILES_ATTRIBUTION"):
+            cfg["tiles"]["attribution"] = env("TILES_ATTRIBUTION").strip()
+    return cfg
+
+
+def password_hash_string(password):
+    """환경변수 ADMIN_PASSWORD_HASH 에 넣을 값: pbkdf2$소금$해시 (비밀번호 원문은 담기지 않음)."""
+    salt = secrets.token_bytes(16)
+    return f"pbkdf2${salt.hex()}${hash_password(password, salt)}"
+
+
+def local_accounts():
+    """개발자(관리자) 계정: data/local_accounts.json + 환경변수 ADMIN_LOGIN_ID / ADMIN_PASSWORD_HASH."""
+    accounts = load_json(LOCAL_PATH, {})
+    lid, ph = os.environ.get("ADMIN_LOGIN_ID", "").strip(), os.environ.get("ADMIN_PASSWORD_HASH", "").strip()
+    if lid and ph.count("$") == 2 and ph.startswith("pbkdf2$"):
+        _, salt, digest = ph.split("$")
+        accounts[lid] = {"salt": salt, "hash": digest, "role": "admin", "name": lid}
+    return accounts
+
+
 def set_local_account(login_id, password, role="admin", name=""):
     """아이디·비밀번호 계정을 만들거나 비밀번호를 바꾼다. 비밀번호 원문은 저장하지 않는다."""
     if not login_id or len(password) < 8:
@@ -73,12 +111,16 @@ def set_local_account(login_id, password, role="admin", name=""):
 
 class Auth:
     def __init__(self, dev_login=False, secure_cookie=False):
-        self.config = load_json(CONFIG_PATH, {})
+        self.config = config_from_env(load_json(CONFIG_PATH, {}))
         self.dev_login = dev_login
         self.secure_cookie = secure_cookie
         self.states = {}   # OAuth state → (provider, 만료시각)
         self.fails = {}    # 접속 IP → 개발자 로그인 실패 시각들
         os.makedirs(db.DATA, exist_ok=True)
+        env_secret = os.environ.get("SESSION_SECRET", "").strip()
+        if env_secret:                       # 배포 환경: 재배포해도 로그인이 풀리지 않게 고정 키 사용
+            self.secret = env_secret.encode()
+            return
         if not os.path.exists(SECRET_PATH):
             with open(SECRET_PATH, "w") as f:
                 f.write(secrets.token_hex(32))
@@ -154,7 +196,7 @@ class Auth:
         recent = [t for t in self.fails.get(ip, []) if now - t < FAIL_WINDOW]
         if len(recent) >= MAX_FAILS:
             raise PermissionError("로그인 시도가 너무 많습니다. 10분 뒤에 다시 시도하세요.")
-        acc = load_json(LOCAL_PATH, {}).get(login_id)
+        acc = local_accounts().get(login_id)
         # 계정이 없어도 같은 시간이 걸리게 해서, 아이디 존재 여부가 드러나지 않게 한다
         salt = bytes.fromhex(acc["salt"]) if acc else b"\0" * 16
         ok = hmac.compare_digest(hash_password(password, salt), acc["hash"] if acc else "x" * 64)

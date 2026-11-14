@@ -761,10 +761,11 @@ def create_server(host="127.0.0.1", port=9090, public_url="", behind_proxy=False
 
 def main():
     ap = argparse.ArgumentParser(description="천안 흡연장 찾기 웹 서버")
-    ap.add_argument("--host", default="127.0.0.1", help="공개 시에도 프록시 뒤라면 127.0.0.1 그대로")
-    ap.add_argument("--port", type=int, default=9090)
-    ap.add_argument("--public-url", default="", help="인터넷 공개 주소 (예: https://smoke.example.com)")
-    ap.add_argument("--behind-proxy", action="store_true", help="nginx/Caddy 뒤에서 실행할 때")
+    on_render = bool(os.environ.get("RENDER"))          # Render 가 자동으로 넣어 주는 값
+    ap.add_argument("--host", default="0.0.0.0" if os.environ.get("PORT") else "127.0.0.1", help="공개 시에도 프록시 뒤라면 127.0.0.1 그대로")
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 9090)))
+    ap.add_argument("--public-url", default=os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL", ""), help="인터넷 공개 주소 (예: https://smoke.example.com)")
+    ap.add_argument("--behind-proxy", action="store_true", default=on_render, help="nginx/Caddy 뒤에서 실행할 때")
     ap.add_argument("--required", type=int, default=3, help="자동 공개에 필요한 확인 인원 (기본 3)")
     ap.add_argument("--gone", type=int, default=3, help="자동 숨김에 필요한 '없어졌어요' 신고 인원 (기본 3)")
     ap.add_argument("--dev-login", action="store_true", help="소셜 로그인 없이 테스트하는 개발용 로그인 (이 PC에서만)")

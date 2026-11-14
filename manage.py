@@ -6,6 +6,7 @@
     python3 manage.py import 파일.csv --source synthetic       # 가상 데이터 가져오기 (화면에 '가상' 표시)
     python3 manage.py stats                                   # 현황 숫자
     python3 manage.py passwd 아이디                            # 개발자(관리자) 비밀번호 바꾸기
+    python3 manage.py hash-password                           # Render 환경변수 ADMIN_PASSWORD_HASH 에 넣을 값 만들기
 """
 import argparse
 import csv
@@ -14,7 +15,7 @@ import os
 import sys
 
 import db
-from auth import set_local_account
+from auth import password_hash_string, set_local_account
 
 
 def main():
@@ -25,8 +26,16 @@ def main():
     e = sub.add_parser("export"); e.add_argument("path")
     i = sub.add_parser("import"); i.add_argument("path"); i.add_argument("--source", choices=["admin", "user", "candidate", "synthetic"], required=True)
     p = sub.add_parser("passwd"); p.add_argument("login_id")
+    sub.add_parser("hash-password")
     a = ap.parse_args()
 
+    if a.cmd == "hash-password":       # DB가 필요 없는 명령
+        pw = getpass.getpass("배포 서버에서 쓸 관리자 비밀번호(8자 이상): ")
+        if len(pw) < 8 or pw != getpass.getpass("한 번 더: "):
+            sys.exit("8자 이상이어야 하고, 두 번 입력한 값이 같아야 합니다.")
+        print("\nADMIN_PASSWORD_HASH 에 아래 한 줄을 그대로 넣으세요 (비밀번호 원문은 들어 있지 않음):\n")
+        print(password_hash_string(pw))
+        return
     db.init()
     if a.cmd == "backup":
         print("백업:", db.backup())
