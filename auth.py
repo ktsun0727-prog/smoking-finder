@@ -162,7 +162,7 @@ class Auth:
             self.fails[ip] = recent + [now]
             raise ValueError("아이디 또는 비밀번호가 올바르지 않습니다.")
         self.fails.pop(ip, None)
-        return self.upsert_user("local", login_id, acc.get("name") or login_id, "", role=acc.get("role", "admin"))1e2bd146a3c20c677d76aa451bd2d63e457b138c5e7e96d8a5ec3d9037e0b6d1
+        return self.upsert_user("local", login_id, acc.get("name") or login_id, "", role=acc.get("role", "admin"))
         
 
     # ---------- OAuth ----------
