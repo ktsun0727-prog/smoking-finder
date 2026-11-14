@@ -32,8 +32,7 @@ cp config.example.json config.json && nano config.json
 - **소셜 로그인 키 ★**: 각 개발자 사이트에서 앱을 만들고 콜백 주소를 등록합니다.
   - 구글: `https://smoke.example.com/auth/google/callback`
   - 네이버: `https://smoke.example.com/auth/naver/callback` (서비스 URL: `https://smoke.example.com`)
-  - 카카오: `https://smoke.example.com/auth/kakao/callback` (REST API 키 = client_id)
-- **admins**: 관리자 이메일 또는 `kakao:회원번호`
+- **admins**: 관리자 이메일 또는 `google:회원번호`
 - **tiles ★**: 지도 그림 제공 업체 주소 (OpenStreetMap 기본 서버는 대규모 서비스에 쓸 수 없음)
 - **notify.webhook_url**: 디스코드/슬랙 채널의 웹훅 주소 (새 제보·신고·사진·문의·서버 오류 알림)
 

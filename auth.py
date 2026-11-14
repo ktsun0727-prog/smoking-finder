@@ -1,4 +1,4 @@
-"""소셜 로그인(구글·네이버·카카오), 개발자 로그인, 회원, 세션 쿠키.
+"""소셜 로그인(구글·네이버), 개발자 로그인, 회원, 세션 쿠키.
 
 키는 config.json 에 넣는다 (config.example.json 참고). 키가 없는 로그인 방식은 화면에서 비활성화된다.
 세 회사 모두 '로그인' 자체는 무료지만, 각 개발자 사이트에 앱을 등록해 키를 받아야 한다.
@@ -32,9 +32,6 @@ PROVIDERS = {
     "naver": {"label": "네이버", "authorize": "https://nid.naver.com/oauth2.0/authorize",
               "token": "https://nid.naver.com/oauth2.0/token",
               "profile": "https://openapi.naver.com/v1/nid/me", "scope": ""},
-    "kakao": {"label": "카카오", "authorize": "https://kauth.kakao.com/oauth/authorize",
-              "token": "https://kauth.kakao.com/oauth/token",
-              "profile": "https://kapi.kakao.com/v2/user/me", "scope": ""},
 }
 LABELS = {**{k: v["label"] for k, v in PROVIDERS.items()}, "local": "개발자", "dev": "개발용"}
 
@@ -61,7 +58,7 @@ def hash_password(password, salt):
 def config_from_env(cfg):
     """환경변수가 있으면 config.json 값보다 우선한다 (Render 같은 배포 환경용)."""
     env = os.environ.get
-    for p in ("google", "naver", "kakao"):
+    for p in ("google", "naver"):
         cid, sec = env(f"{p.upper()}_CLIENT_ID"), env(f"{p.upper()}_CLIENT_SECRET")
         if cid or sec:
             c = cfg.setdefault(p, {})
@@ -131,8 +128,6 @@ class Auth:
     # ---------- 설정 ----------
     def enabled(self, p):
         c = self.config.get(p, {})
-        if p == "kakao":
-            return bool(c.get("client_id"))
         return bool(c.get("client_id") and c.get("client_secret"))
 
     def providers(self):
@@ -236,12 +231,9 @@ class Auth:
         prof = _get_json(PROVIDERS[p]["profile"], token)
         if p == "google":
             pid, name, email = prof.get("sub"), prof.get("name"), prof.get("email")
-        elif p == "naver":
+        else:   # naver
             r = prof.get("response", {})
             pid, name, email = r.get("id"), r.get("nickname") or r.get("name"), r.get("email")
-        else:
-            acc = prof.get("kakao_account", {})
-            pid, name, email = prof.get("id"), acc.get("profile", {}).get("nickname"), acc.get("email")
         if not pid:
             raise ValueError("사용자 정보를 받지 못했습니다.")
         return self.upsert_user(p, str(pid), name, email)

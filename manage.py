@@ -93,7 +93,7 @@ def make_env():
         vals["ADMIN_LOGIN_ID"] = lid
         vals["ADMIN_PASSWORD_HASH"] = f"pbkdf2${acc['salt']}${acc['hash']}"
     vals["ADMIN_EMAILS"] = ",".join(cfg.get("admins", []))
-    for p in ("google", "naver", "kakao"):
+    for p in ("google", "naver"):
         c = cfg.get(p, {})
         vals[f"{p.upper()}_CLIENT_ID"] = c.get("client_id", "")
         vals[f"{p.upper()}_CLIENT_SECRET"] = c.get("client_secret", "")

@@ -18,7 +18,6 @@ EXAMPLE = os.path.join(BASE, "config.example.json")
 PROVIDERS = [
     ("google", "구글", "http://localhost:9090/auth/google/callback"),
     ("naver", "네이버", "http://localhost:9090/auth/naver/callback"),
-    ("kakao", "카카오", "http://localhost:9090/auth/kakao/callback"),
 ]
 
 
@@ -54,7 +53,7 @@ def main():
     print("저장했습니다:", CONFIG)
     for pid, label, _ in PROVIDERS:
         c = cfg.get(pid, {})
-        ok = bool(c.get("client_id")) and (bool(c.get("client_secret")) or pid == "kakao")
+        ok = bool(c.get("client_id")) and bool(c.get("client_secret"))
         print(f"  {label}: {'설정됨' if ok else '없음'}")
     print("\n서버를 다시 켜면 적용됩니다:  python3 server.py")
 

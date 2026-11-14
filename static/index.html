@@ -169,7 +169,6 @@
   .provider-btns a { display: block; text-align: center; padding: 12px; border-radius: 10px; font-weight: 700; text-decoration: none; }
   .p-google { background: #fff; color: #1f1f1f; border: 1px solid #dadce0; }
   .p-naver { background: #03c75a; color: #fff; }
-  .p-kakao { background: #fee500; color: #191919; }
   .p-dev { background: var(--demo-soft); color: var(--demo); border: 1px dashed var(--demo); }
   .p-off { opacity: .4; pointer-events: none; }
   .dev-login { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -438,7 +437,7 @@ document.querySelectorAll(".lang-toggle").forEach(b => b.onclick = () => {
 });
 
 const KIND_LABEL = () => ({ synthetic: tr("가상", "Demo"), user: tr("제보", "User"), candidate: tr("미확인 후보", "Unverified") });
-const PROVIDER_LABEL = { google: "Google", naver: "Naver", kakao: "Kakao", dev: "Dev", local: "Developer" };
+const PROVIDER_LABEL = { google: "Google", naver: "Naver", dev: "Dev", local: "Developer" };
 const ISSUE_LABEL = { gone: "없어졌어요", moved: "위치가 달라요", info: "정보가 틀려요" };
 const FB_LABEL = { bug: "오류", data: "흡연장 정보", idea: "제안", other: "기타" };
 
@@ -838,12 +837,12 @@ async function submitForm(force) {
 $("addView").onsubmit = e => { e.preventDefault(); submitForm(false); };
 
 /* ---------- 로그인·계정 ---------- */
-const PROVIDER_CLASS = { google: "p-google", naver: "p-naver", kakao: "p-kakao" };
+const PROVIDER_CLASS = { google: "p-google", naver: "p-naver" };
 async function openLogin() {
   if ($("loginDlg").open) return;
   try {
     const { data: d } = await api("/auth/providers");
-    const names = { google: tr("구글", "Google"), naver: tr("네이버", "Naver"), kakao: tr("카카오", "Kakao") };
+    const names = { google: tr("구글", "Google"), naver: tr("네이버", "Naver") };
     const btns = d.providers.map(p => p.enabled
       ? `<a class="${PROVIDER_CLASS[p.id]}" href="/auth/${p.id}/login">${tr(`${names[p.id]}로 계속하기`, `Continue with ${names[p.id]}`)}</a>`
       : `<a class="${PROVIDER_CLASS[p.id]} p-off" aria-disabled="true">${tr(`${names[p.id]}로 계속하기 (준비 중)`, `Continue with ${names[p.id]} (coming soon)`)}</a>`);

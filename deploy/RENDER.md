@@ -18,7 +18,7 @@ python3 manage.py make-env      # 지금 설정(config.json·secret.key·관리�
 | 〃 | `ADMIN_PASSWORD_HASH` | `python3 manage.py hash-password` 출력값 (`pbkdf2$...`) |
 | `config.json` → admins | `ADMIN_EMAILS` | 관리자 이메일, 여러 개면 쉼표로 |
 | `config.json` → google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | 구글 OAuth 키 |
-| `config.json` → naver/kakao | `NAVER_CLIENT_ID` … `KAKAO_CLIENT_SECRET` | (선택) |
+| `config.json` → naver | `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET` | (선택) |
 | `config.json` → notify | `NOTIFY_WEBHOOK_URL` | (선택) 알림 웹훅 |
 | `config.json` → tiles | `TILES_URL`, `TILES_ATTRIBUTION` | (선택) 지도 그림 업체 |
 | `data/app.db` | — | 환경변수로 못 넣음. 처음 켤 때 `seed/places.csv`(흡연장 21곳)로 자동 채움 |
