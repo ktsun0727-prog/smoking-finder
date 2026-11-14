@@ -20,6 +20,10 @@ python3 server.py --dev-login     # 소셜 로그인 키 없이 테스트용 로
 | `--public-url https://도메인` | 인터넷 공개 주소 (로그인 콜백, HTTPS 전용 쿠키에 사용) |
 | `--behind-proxy` | nginx/Caddy 뒤에서 실행할 때 (실제 접속 IP를 읽음) |
 
+## 설정 파일 (.env)
+
+`python3 manage.py make-env` 로 지금 설정을 `.env` 하나로 모을 수 있습니다. 항목은 `.env.example` 참고, `.env` 는 GitHub 에 올라가지 않습니다. 배포는 `deploy/RENDER.md`.
+
 ## 관리 명령
 
 ```bash

@@ -7,6 +7,7 @@
     python3 manage.py stats                                   # 현황 숫자
     python3 manage.py passwd 아이디                            # 개발자(관리자) 비밀번호 바꾸기
     python3 manage.py hash-password                           # Render 환경변수 ADMIN_PASSWORD_HASH 에 넣을 값 만들기
+    python3 manage.py make-env                                # 지금 설정(config.json·secret.key·관리자 계정)을 .env 하나로 모으기
 """
 import argparse
 import csv
@@ -14,8 +15,9 @@ import getpass
 import os
 import sys
 
+import envfile  # noqa: F401  (.env 를 먼저 읽는다)
 import db
-from auth import password_hash_string, set_local_account
+from auth import CONFIG_PATH, LOCAL_PATH, SECRET_PATH, load_json, password_hash_string, set_local_account
 
 
 def main():
@@ -27,6 +29,7 @@ def main():
     i = sub.add_parser("import"); i.add_argument("path"); i.add_argument("--source", choices=["admin", "user", "candidate", "synthetic"], required=True)
     p = sub.add_parser("passwd"); p.add_argument("login_id")
     sub.add_parser("hash-password")
+    sub.add_parser("make-env")
     a = ap.parse_args()
 
     if a.cmd == "hash-password":       # DB가 필요 없는 명령
@@ -36,6 +39,8 @@ def main():
         print("\nADMIN_PASSWORD_HASH 에 아래 한 줄을 그대로 넣으세요 (비밀번호 원문은 들어 있지 않음):\n")
         print(password_hash_string(pw))
         return
+    if a.cmd == "make-env":
+        return make_env()
     db.init()
     if a.cmd == "backup":
         print("백업:", db.backup())
@@ -68,6 +73,45 @@ def main():
             sys.exit("두 비밀번호가 다릅니다.")
         set_local_account(a.login_id, pw)
         print(f"'{a.login_id}' 계정의 비밀번호를 저장했습니다.")
+
+
+def make_env():
+    """config.json, data/secret.key, data/local_accounts.json 의 값을 .env 한 파일로 모은다. 값은 화면에 출력하지 않는다."""
+    path = envfile.ENV_PATH
+    if os.path.exists(path):
+        sys.exit(f"{path} 이(가) 이미 있습니다. 덮어쓰지 않으니, 지우거나 이름을 바꾼 뒤 다시 실행하세요.")
+    cfg = load_json(CONFIG_PATH, {})
+    vals = {}
+    try:
+        vals["SESSION_SECRET"] = open(SECRET_PATH).read().strip()
+    except FileNotFoundError:
+        import secrets
+        vals["SESSION_SECRET"] = secrets.token_hex(32)
+    accounts = load_json(LOCAL_PATH, {})
+    if accounts:
+        lid, acc = next(iter(accounts.items()))       # 첫 번째 관리자 계정 (해시 그대로 옮김, 원문 없음)
+        vals["ADMIN_LOGIN_ID"] = lid
+        vals["ADMIN_PASSWORD_HASH"] = f"pbkdf2${acc['salt']}${acc['hash']}"
+    vals["ADMIN_EMAILS"] = ",".join(cfg.get("admins", []))
+    for p in ("google", "naver", "kakao"):
+        c = cfg.get(p, {})
+        vals[f"{p.upper()}_CLIENT_ID"] = c.get("client_id", "")
+        vals[f"{p.upper()}_CLIENT_SECRET"] = c.get("client_secret", "")
+    vals["NOTIFY_WEBHOOK_URL"] = cfg.get("notify", {}).get("webhook_url", "")
+    if cfg.get("tiles", {}).get("url", "").startswith("https://tile.openstreetmap.org") is False:
+        vals["TILES_URL"] = cfg.get("tiles", {}).get("url", "")
+        vals["TILES_ATTRIBUTION"] = cfg.get("tiles", {}).get("attribution", "")
+    lines = ["# 천안 흡연장 찾기 설정 — python3 manage.py make-env 로 만듦. GitHub 에 올리지 마세요.", ""]
+    lines += [f'{k}="{v}"' if any(ch in v for ch in " #'\"") else f"{k}={v}" for k, v in vals.items()]
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"{path} 을(를) 만들었습니다 (본인만 읽기 가능). 들어간 항목:")
+    for k, v in vals.items():
+        print(f"  {k:22} {'설정됨' if v else '(비어 있음)'}")
+    if len(accounts) > 1:
+        print(f"  ※ 관리자 계정이 {len(accounts)}개라 첫 번째만 옮겼습니다.")
+    print("Render 에서는 Environment → 'Add from .env' 에 이 파일 내용을 붙여넣으세요.")
 
 
 if __name__ == "__main__":

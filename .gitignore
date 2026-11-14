@@ -3,3 +3,6 @@ data/
 __pycache__/
 *.tmp
 dist/
+.env
+.env.*
+!.env.example

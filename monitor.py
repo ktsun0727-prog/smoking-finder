@@ -14,6 +14,8 @@ import sys
 import time
 import urllib.request
 
+import envfile  # noqa: F401  (.env 의 NOTIFY_WEBHOOK_URL 사용)
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(BASE, "data", "monitor_state.json")
 
@@ -21,9 +23,9 @@ STATE = os.path.join(BASE, "data", "monitor_state.json")
 def notify(text):
     try:
         cfg = json.load(open(os.environ.get("SMOKING_CONFIG") or os.path.join(BASE, "config.json"), encoding="utf-8"))
-        url = cfg.get("notify", {}).get("webhook_url")
+        url = os.environ.get("NOTIFY_WEBHOOK_URL") or cfg.get("notify", {}).get("webhook_url")
     except (FileNotFoundError, json.JSONDecodeError):
-        url = None
+        url = os.environ.get("NOTIFY_WEBHOOK_URL")
     print(time.strftime("%Y-%m-%d %H:%M:%S"), text)
     if url:
         body = json.dumps({"text": text, "content": text}).encode()

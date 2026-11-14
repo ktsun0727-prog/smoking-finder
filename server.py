@@ -25,6 +25,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import envfile  # noqa: F401  (.env 를 먼저 읽는다 — db·auth 보다 앞에 있어야 함)
 import db
 from auth import LABELS, PROVIDERS, Auth
 from find_smoking import CHEONAN_LAT, CHEONAN_LON, haversine_m

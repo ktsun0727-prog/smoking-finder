@@ -1,5 +1,15 @@
 # Render 배포 가이드
 
+## 한 번에 관리: .env
+모든 설정을 프로젝트 폴더의 `.env` 파일 하나로 관리할 수 있습니다. (`.env` 는 GitHub 에 올라가지 않음)
+```bash
+python3 manage.py make-env      # 지금 설정(config.json·secret.key·관리자 계정)을 .env 로 모으기
+# 또는: cp .env.example .env 후 직접 채우기
+```
+- 내 PC: 서버가 켜질 때 `.env` 를 자동으로 읽습니다.
+- Render: **Environment → Add from .env** 에 `.env` 내용을 통째로 붙여넣으면 아래 환경변수가 한 번에 들어갑니다.
+- 우선순위: 실제 환경변수(Render 화면) > `.env` > `config.json`·`data/` 파일
+
 ## GitHub에 없는 파일 → Render 환경변수
 | 내 PC의 파일 | Render 환경변수 | 넣는 값 |
 |---|---|---|
