@@ -26,6 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import envfile  # noqa: F401  (.env 를 먼저 읽는다 — db·auth 보다 앞에 있어야 함)
+import cloudsync
 import db
 from auth import LABELS, PROVIDERS, Auth
 from find_smoking import CHEONAN_LAT, CHEONAN_LON, haversine_m
@@ -655,6 +656,7 @@ a{{display:inline-block;background:#231815;color:#fff;font-weight:700;padding:14
                 c.execute("INSERT INTO photos(place_id, user_id, file, status, created_at) VALUES (?,?,?,?,?)",
                           (pid, u["id"], name, status, db.now()))
                 db.audit(c, u["id"], "photo", pid, status)
+            cloudsync.push_photo(db.PHOTO_DIR, name)
             if status == "pending":
                 notifier.send("📷 새 사진이 올라왔습니다. 관리자 화면 → 사진에서 확인하세요.", key="photo", every=300)
             self.send_json(201, {"ok": True, "status": status})
@@ -784,11 +786,13 @@ def remove_photo_file(name):
             os.remove(os.path.join(db.PHOTO_DIR, name))
         except FileNotFoundError:
             pass
+        cloudsync.delete_photo(name)
 
 
 def create_server(host="127.0.0.1", port=9090, public_url="", behind_proxy=False, dev_login=False,
                   required=3, gone=3, backups=True):
     db.init()
+    cloudsync.start(db.DB_PATH)
     if backups:
         db.start_daily_backup()
     opts = argparse.Namespace(public_url=public_url.rstrip("/"), behind_proxy=behind_proxy)
@@ -804,8 +808,8 @@ def main():
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 9090)))
     ap.add_argument("--public-url", default=os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL", ""), help="인터넷 공개 주소 (예: https://smoke.example.com)")
     ap.add_argument("--behind-proxy", action="store_true", default=on_render, help="nginx/Caddy 뒤에서 실행할 때")
-    ap.add_argument("--required", type=int, default=3, help="자동 공개에 필요한 확인 인원 (기본 3)")
-    ap.add_argument("--gone", type=int, default=3, help="자동 숨김에 필요한 '없어졌어요' 신고 인원 (기본 3)")
+    ap.add_argument("--required", type=int, default=int(os.environ.get("CONFIRM_REQUIRED", 3)), help="자동 공개에 필요한 확인 인원 (기본 3)")
+    ap.add_argument("--gone", type=int, default=int(os.environ.get("GONE_REQUIRED", 3)), help="자동 숨김에 필요한 '없어졌어요' 신고 인원 (기본 3)")
     ap.add_argument("--dev-login", action="store_true", help="소셜 로그인 없이 테스트하는 개발용 로그인 (이 PC에서만)")
     args = ap.parse_args()
 

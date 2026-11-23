@@ -35,4 +35,9 @@ python3 manage.py make-env      # 지금 설정(config.json·secret.key·관리�
 ## 무료 플랜의 한계
 - **15분 동안 접속이 없으면 잠들고**, 다음 접속 때 깨어나는 데 30초~1분 걸린다.
 - **재배포·재시작하면 `data/` 가 초기화된다.** 제보·회원·사진·즐겨찾기가 사라지고 흡연장은 `seed/places.csv` 로 다시 채워진다.
-- 계속 보관하려면 Starter 플랜 + Persistent Disk(render.yaml 주석 참고) 또는 외부 데이터베이스가 필요하다.
+- **무료 해결책: `DATA_REPO` + `DATA_REPO_TOKEN`** 을 넣으면 `cloudsync.py` 가 비공개 GitHub 저장소에 2분마다(바뀐 게 있을 때만)
+  `app.db` 를 올리고, 사진은 바로 올린다. 재배포로 꺼질 때도 마지막으로 저장하고, 다시 켜지면 저장소에서 되살린다.
+  - 토큰 만들기: GitHub → Settings → Developer settings → Fine-grained tokens → Generate
+    → Repository access: **Only select repositories → smoking-finder-data** → Permissions: **Contents: Read and write** → 만료 1년
+  - 주의: 보관함에 `app.db` 가 생긴 뒤에는 `seed/places.csv` 를 고쳐도 자동으로 들어가지 않는다 (관리자 화면에서 추가하거나 `manage.py`).
+- 유료로는 Starter 플랜 + Persistent Disk(render.yaml 주석 참고).

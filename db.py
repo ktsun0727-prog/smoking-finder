@@ -12,6 +12,7 @@ import sqlite3
 import threading
 import time
 
+import cloudsync
 from find_smoking import ADDR_KEYS, LAT_KEYS, LON_KEYS, NAME_KEYS, pick, read_rows
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -78,7 +79,10 @@ def tx():
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
+        changed = conn.total_changes
         conn.commit()
+        if changed:
+            cloudsync.mark_dirty()     # GitHub 보관함에 올릴 게 생겼다고 표시
     except Exception:
         conn.rollback()
         raise
@@ -93,6 +97,7 @@ def audit(conn, actor, action, target, detail=""):
 
 def init():
     os.makedirs(DATA, exist_ok=True)
+    cloudsync.restore(DB_PATH, PHOTO_DIR)   # 무료 서버가 초기화됐으면 GitHub 보관함에서 되살린다
     first = not os.path.exists(DB_PATH)
     with tx() as c:
         c.execute("PRAGMA journal_mode = WAL")
