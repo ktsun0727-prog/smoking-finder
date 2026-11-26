@@ -13,6 +13,7 @@ Python 표준 라이브러리만 사용한다. 자세한 API 목록은 README.md
 import argparse
 import collections
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -280,7 +281,9 @@ def make_handler(auth, rules, opts, notifier):
                 if not auth.dev_login or opts.behind_proxy or self.client_address[0] not in ("127.0.0.1", "::1"):
                     return self.fail(404, "없는 주소입니다.")
                 name = (q.get("name", ["테스트"])[0] or "테스트")[:20]
-                uid = auth.upsert_user("dev", name, f"[개발] {name}", "", role="admin" if q.get("admin", ["0"])[0] == "1" else None)
+                # 쿠키에는 영문·숫자만 들어갈 수 있어서, 한글 이름은 짧은 해시로 바꿔 회원 번호로 쓴다.
+                pid = name if name.isascii() and name.replace("_", "").isalnum() else "u" + hashlib.sha1(name.encode()).hexdigest()[:12]
+                uid = auth.upsert_user("dev", pid, f"[개발] {name}", "", role="admin" if q.get("admin", ["0"])[0] == "1" else None)
                 return self.redirect("/", auth.make_cookie(uid))
             self.fail(404, "없는 주소입니다.")
 

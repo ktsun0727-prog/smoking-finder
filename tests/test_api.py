@@ -79,6 +79,13 @@ class ApiTest(unittest.TestCase):
         self.assertEqual({p["name"] for p in d["places"]} >= {"가부스", "나부스"}, True)
         self.assertNotIn("created_by", d["places"][0])   # 누가 올렸는지는 공개하지 않는다
 
+    def test_01b_korean_dev_login(self):
+        # 앱의 '개발용 로그인' 버튼은 한글 이름(테스터123)을 쓴다 → 쿠키가 만들어져야 한다
+        c = Client(self.base).dev_login("테스터123")
+        code, d = c.call("/api/me")
+        self.assertEqual(code, 200)
+        self.assertIn("테스터123", d["user"]["name"])
+
     def test_02_login_required_and_origin(self):
         self.assertEqual(self.anon.call("/api/places", {"name": "x장소", "lat": 36.836, "lon": 127.169})[0], 401)
         code, _ = self.u[0].call("/api/places", {"name": "x장소", "lat": 36.836, "lon": 127.169}, {"Origin": "http://evil.example"})

@@ -1,6 +1,42 @@
 # 천안 흡연장 찾기
 
-내 위치에서 가까운 흡연구역을 찾아 주는 웹 서비스입니다. Python 표준 라이브러리만 사용하므로 따로 설치할 것이 없습니다 (Python 3.9 이상).
+> **피울 곳은 줄었는데, 찾을 방법은 없었다.** 천안에는 공개된 흡연구역 목록이 없고, 2026년부터 정류장·광장까지 금연구역이 됐습니다.
+> 이 서비스는 내 위치에서 가까운 흡연구역을 거리순으로 보여 주고, 길찾기·로드뷰로 바로 이어 줍니다.
+
+- **배포 주소**: https://smoking-finder.onrender.com (무료 서버라 첫 접속에 최대 50초)
+- **만든 사람**: 김동환 · 단국대학교 · 1팀 (2026 개인과제)
+- **특징**: Python 표준 라이브러리만 사용 → `pip install` 없이 `python3` 하나로 실행 · 운영비 0원
+
+## ▶ 발표용: 명령 하나로 시연하기
+
+```bash
+cd smoking_finder
+python3 demo.py          # → http://localhost:9090 (브라우저 자동 열림)
+```
+
+- 실제 데이터와 키는 건드리지 않고, **임시 폴더에 깨끗한 데이터베이스**를 만들어 켭니다. 끄면(`Ctrl + C`) 사라집니다.
+- 로그인 키 없이 **개발용 로그인**으로 일반 사용자·관리자를 바꿔 가며 보여 줄 수 있습니다 (주소는 실행 화면에 나옴).
+- **"3명 확인" 흐름을 바로 보여 주기 위해** 2명이 이미 확인한 제보 하나를 넣어 둡니다 → 발표자가 세 번째로 '확인'을 누르면 그 자리에서 공개됩니다.
+
+| 순서 | 보여 줄 것 | 핵심 코드 |
+|---|---|---|
+| 1 | 노란 표지판 첫 화면 → '내 위치로 찾기' | `static/index.html` 위치 요청 |
+| 2 | 가까운 순 목록 · 거리 · 도보 시간 → 길찾기/로드뷰 | `static/index.html` `haversine()` · `compute()` (**위치는 기기 안에서만 계산**) |
+| 3 | 일반 사용자 로그인 → 시연 제보 '확인' → 3/3 공개 | `server.py` `_confirm()` |
+| 4 | 관리자 로그인 → 관리자 화면 | `server.py` `/api/admin/*` |
+| 5 | 자동 테스트 21개 통과 | `python3 -m unittest discover -s tests` |
+
+코드를 어디부터 설명하면 좋은지는 **[docs/CODE_TOUR.md](docs/CODE_TOUR.md)** 에 정리했습니다.
+
+## 숫자로 보기
+
+| 항목 | 값 |
+|---|---|
+| 등록된 흡연구역 | 35곳 (확인 22 · 미확인 후보 13) — `seed/places.csv` |
+| 자동 테스트 | 21개 (로그인 · 제보 · 3명 확인 · 권한 · 앱 로그인 · 데이터 보관) |
+| 코드 | 약 3,500줄 (서버 Python · 화면 HTML/JS · 안드로이드 Java) |
+| 외부 패키지 | 0개 (서버) |
+| 운영비 | 0원 (Render 무료 · OpenStreetMap · GitHub 비공개 저장소 백업) |
 
 ## 실행
 
@@ -32,7 +68,7 @@ python3 manage.py backup                         # 즉시 백업 (서버도 하�
 python3 manage.py export 내보내기.csv             # 공개 중인 흡연장을 CSV로
 python3 manage.py import 파일.csv --source admin  # CSV 가져오기 (admin / user / candidate / synthetic)
 python3 manage.py passwd 아이디                  # 개발자(관리자) 비밀번호 바꾸기
-python3 -m unittest -v tests.test_api            # 자동 테스트 (임시 폴더에서 실행, 실제 데이터는 안 건드림)
+python3 -m unittest discover -s tests -v         # 자동 테스트 21개 (임시 폴더에서 실행, 실제 데이터는 안 건드림)
 ```
 
 ## 기능
@@ -65,13 +101,17 @@ python3 -m unittest -v tests.test_api            # 자동 테스트 (임시 폴�
 server.py          웹 서버와 API
 db.py              SQLite 데이터베이스 (data/app.db), 예전 CSV 자동 이전, 백업
 auth.py            로그인(소셜·개발자), 회원, 쿠키
+cloudsync.py       무료 서버용 데이터 보관 (비공개 GitHub 저장소에 자동 저장·복원)
+demo.py            발표용 데모 서버 (임시 데이터 + 시연용 제보)
 find_smoking.py    거리 계산, CSV 읽기, 터미널 검색 도구
 manage.py          관리 명령
 monitor.py         서버 감시 (멈추면 웹훅 알림)
 deploy/            공개용 설정: systemd 서비스, Caddy(HTTPS), 외부 백업, cron, DEPLOY.md
 android/           안드로이드 앱 프로젝트 (android/README.md)
 static/            화면(index.html), 약관·개인정보처리방침, 앱 설치 파일(manifest, sw.js, icon.svg)
-tests/test_api.py  자동 테스트
+tests/            자동 테스트 (test_api.py, test_cloudsync.py)
+seed/places.csv    처음 켤 때 넣는 흡연장 목록 (개인정보 없음)
+docs/CODE_TOUR.md  발표용 코드 설명
 data/              실제 데이터 (공유 금지: app.db, secret.key, local_accounts.json, backups/)
 config.json        로그인 키·관리자·지도 설정 (config.example.json 복사해서 만듦, 공유 금지)
 ```
